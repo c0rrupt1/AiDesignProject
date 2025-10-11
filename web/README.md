@@ -1,6 +1,6 @@
 ## Interior Makeover Studio – Web
 
-Next.js (App Router) front end + API route for AI-powered room restyling.
+Next.js (App Router) front end + API route for AI-powered room restyling powered by Qwen’s `Qwen-Image-Edit-2509`.
 
 ### Prerequisites
 
@@ -20,7 +20,7 @@ Next.js (App Router) front end + API route for AI-powered room restyling.
    ```bash
    HUGGING_FACE_API_KEY=hf-your-token-here
    # Optional: change the default model
-   # HUGGING_FACE_MODEL=stabilityai/stable-diffusion-xl-base-1.0
+   # HUGGING_FACE_MODEL=Qwen/Qwen-Image-Edit-2509
    ```
 
 3. Start the development server:
@@ -35,8 +35,9 @@ Next.js (App Router) front end + API route for AI-powered room restyling.
 
 - `src/app/page.tsx` renders the UI for uploading a base photo and style prompt.
 - On submit, the form posts to `/api/edit`, streaming the files as `multipart/form-data`.
-- `src/app/api/edit/route.ts` forwards the request to Hugging Face’s Stable Diffusion XL endpoint and returns a base64 data URL.
+- `src/app/api/edit/route.ts` forwards the request to Hugging Face’s Qwen Image Edit endpoint and returns a base64 data URL.
 - The UI previews generated images and keeps a local history for the session.
+- Advanced controls (strength, true CFG scale, guidance scale, diffusion steps, negative prompt, seed) are serialized and sent with the request to improve consistency and adherence to instructions.
 
 ### Customisation ideas
 

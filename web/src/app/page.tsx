@@ -15,6 +15,13 @@ export default function Home() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [negativePrompt, setNegativePrompt] = useState("");
+  const [guidanceScale, setGuidanceScale] = useState(1.2);
+  const [strength, setStrength] = useState(0.4);
+  const [trueCfgScale, setTrueCfgScale] = useState(4);
+  const [inferenceSteps, setInferenceSteps] = useState(35);
+  const [seed, setSeed] = useState<string>("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [results, setResults] = useState<GeneratedImage[]>([]);
 
   useEffect(() => {
@@ -59,6 +66,16 @@ export default function Home() {
     const formData = new FormData();
     formData.append("prompt", prompt);
     formData.append("image", imageFile);
+    formData.append("guidanceScale", guidanceScale.toString());
+    formData.append("strength", strength.toString());
+    formData.append("trueCfgScale", trueCfgScale.toString());
+    formData.append("inferenceSteps", inferenceSteps.toString());
+    if (negativePrompt.trim()) {
+      formData.append("negativePrompt", negativePrompt);
+    }
+    if (seed.trim()) {
+      formData.append("seed", seed.trim());
+    }
 
     try {
       setIsLoading(true);
@@ -190,6 +207,147 @@ export default function Home() {
                   natural light.”
                 </li>
               </ul>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/40">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((prev) => !prev)}
+                className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/5"
+              >
+                Advanced controls
+                <span className="text-xs uppercase tracking-[0.3em] text-amber-400">
+                  {showAdvanced ? "Hide" : "Show"}
+                </span>
+              </button>
+              {showAdvanced && (
+                <div className="grid gap-4 border-t border-white/5 px-4 py-4 text-sm text-slate-200">
+                  <div className="space-y-2">
+                    <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <span>Influence (Strength)</span>
+                      <span>{strength.toFixed(2)}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={0.9}
+                      step={0.05}
+                      value={strength}
+                      onChange={(event) =>
+                        setStrength(Number(event.target.value))
+                      }
+                      className="w-full accent-amber-500"
+                    />
+                    <p className="text-xs text-slate-400">
+                      Lower strength keeps more of your original room. Higher
+                      values allow bolder changes.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <span>Identity lock (True CFG)</span>
+                      <span>{trueCfgScale.toFixed(1)}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={1}
+                      max={10}
+                      step={0.5}
+                      value={trueCfgScale}
+                      onChange={(event) =>
+                        setTrueCfgScale(Number(event.target.value))
+                      }
+                      className="w-full accent-amber-500"
+                    />
+                    <p className="text-xs text-slate-400">
+                      Increase to preserve the original layout and objects.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <span>Prompt fidelity (Guidance)</span>
+                      <span>{guidanceScale.toFixed(1)}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={3}
+                      step={0.1}
+                      value={guidanceScale}
+                      onChange={(event) =>
+                        setGuidanceScale(Number(event.target.value))
+                      }
+                      className="w-full accent-amber-500"
+                    />
+                    <p className="text-xs text-slate-400">
+                      Boost this if instructions are ignored; very high values
+                      can introduce artifacts.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <span>Detail steps</span>
+                      <span>{inferenceSteps}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={20}
+                      max={60}
+                      step={1}
+                      value={inferenceSteps}
+                      onChange={(event) =>
+                        setInferenceSteps(Number(event.target.value))
+                      }
+                      className="w-full accent-amber-500"
+                    />
+                    <p className="text-xs text-slate-400">
+                      More steps yield cleaner results but increase inference
+                      time.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="negativePrompt"
+                      className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
+                    >
+                      Negative prompt
+                    </label>
+                    <textarea
+                      id="negativePrompt"
+                      placeholder="Elements to avoid (e.g. text overlays, extra furniture, unrealistic lighting)."
+                      value={negativePrompt}
+                      onChange={(event) => setNegativePrompt(event.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="seed"
+                      className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
+                    >
+                      Seed (optional)
+                    </label>
+                    <input
+                      id="seed"
+                      type="number"
+                      inputMode="numeric"
+                      value={seed}
+                      onChange={(event) => setSeed(event.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+                    />
+                    <p className="text-xs text-slate-400">
+                      Use the same seed to reproduce results. Leave blank for
+                      variation.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {errorMessage && (

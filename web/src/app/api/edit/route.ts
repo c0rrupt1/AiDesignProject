@@ -21,7 +21,12 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const prompt = formData.get("prompt");
   const image = formData.get("image");
-  const mask = formData.get("mask");
+  const negativePrompt = formData.get("negativePrompt");
+  const guidanceScaleInput = formData.get("guidanceScale");
+  const strengthInput = formData.get("strength");
+  const seedInput = formData.get("seed");
+  const trueCfgScaleInput = formData.get("trueCfgScale");
+  const inferenceStepsInput = formData.get("inferenceSteps");
 
   if (typeof prompt !== "string" || !prompt.trim()) {
     return NextResponse.json(
@@ -37,34 +42,42 @@ export async function POST(request: Request) {
     );
   }
 
-  if (mask instanceof File) {
-    return NextResponse.json(
-      {
-        error:
-          "Mask-based edits are not supported with the current Hugging Face model.",
-      },
-      { status: 400 },
-    );
-  }
-
   const imageBuffer = Buffer.from(await image.arrayBuffer());
   const base64Input = imageBuffer.toString("base64");
   const contentType = image.type || "image/png";
   const modelId =
-    process.env.HUGGING_FACE_MODEL ?? "stabilityai/stable-diffusion-xl-base-1.0";
+    process.env.HUGGING_FACE_MODEL ?? "Qwen/Qwen-Image-Edit-2509";
+  const guidanceScale = clampNumber(parseNumber(guidanceScaleInput, 1.0), 0.5, 5);
+  const strength = clampNumber(parseNumber(strengthInput, 0.35), 0.05, 0.95);
+  const trueCfgScale = clampNumber(parseNumber(trueCfgScaleInput, 4.0), 1, 10);
+  const inferenceSteps = clampInteger(parseNumber(inferenceStepsInput, 40), 10, 60);
+  const parsedSeed = parseNumber(seedInput, Number.NaN);
+  const seed = Number.isFinite(parsedSeed) ? Math.floor(parsedSeed) : null;
 
-  const payload = {
-    inputs: prompt.trim(),
-    image: `data:${contentType};base64,${base64Input}`,
+  const payload: QwenImageEditPayload = {
+    inputs: {
+      prompt: prompt.trim(),
+      image: [`data:${contentType};base64,${base64Input}`],
+    },
     parameters: {
-      guidance_scale: 7.5,
-      strength: 0.65,
+      guidance_scale: guidanceScale,
+      strength,
+      true_cfg_scale: trueCfgScale,
+      num_inference_steps: inferenceSteps,
     },
     options: {
       wait_for_model: true,
       use_gpu: true,
     },
   };
+
+  if (typeof negativePrompt === "string" && negativePrompt.trim()) {
+    payload.parameters.negative_prompt = negativePrompt.trim();
+  }
+
+  if (seed !== null && Number.isFinite(seed)) {
+    payload.parameters.seed = seed;
+  }
 
   try {
     const response = await fetch(
@@ -129,3 +142,36 @@ async function safeJson(response: Response) {
     return null;
   }
 }
+
+function parseNumber(value: FormDataEntryValue | null, fallback: number): number {
+  if (typeof value !== "string") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+function clampInteger(value: number, min: number, max: number): number {
+  const rounded = Math.round(value);
+  return Math.min(Math.max(rounded, min), max);
+}
+
+type QwenImageEditPayload = {
+  inputs: {
+    prompt: string;
+    image: string[];
+  };
+  parameters: {
+    guidance_scale: number;
+    strength: number;
+    true_cfg_scale: number;
+    num_inference_steps: number;
+    negative_prompt?: string;
+    seed?: number;
+  };
+  options: {
+    wait_for_model: boolean;
+    use_gpu?: boolean;
+  };
+};
