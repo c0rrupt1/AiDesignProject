@@ -1,5 +1,8 @@
 import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
+import sharp from "sharp";
+
+import type { GoogleGenerateContentResponse } from "./types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,9 +14,9 @@ export const config = {
 };
 
 export async function POST(request: Request) {
-  if (!process.env.HUGGING_FACE_API_KEY) {
+  if (!process.env.GOOGLE_AI_STUDIO_API_KEY) {
     return NextResponse.json(
-      { error: "HUGGING_FACE_API_KEY is not set on the server." },
+      { error: "GOOGLE_AI_STUDIO_API_KEY is not set on the server." },
       { status: 500 },
     );
   }
@@ -21,11 +24,11 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const prompt = formData.get("prompt");
   const image = formData.get("image");
+  const mask = formData.get("mask");
   const negativePrompt = formData.get("negativePrompt");
   const guidanceScaleInput = formData.get("guidanceScale");
   const strengthInput = formData.get("strength");
   const seedInput = formData.get("seed");
-  const trueCfgScaleInput = formData.get("trueCfgScale");
   const inferenceStepsInput = formData.get("inferenceSteps");
 
   if (typeof prompt !== "string" || !prompt.trim()) {
@@ -43,50 +46,96 @@ export async function POST(request: Request) {
   }
 
   const imageBuffer = Buffer.from(await image.arrayBuffer());
-  const base64Input = imageBuffer.toString("base64");
   const contentType = image.type || "image/png";
-  const modelId =
-    process.env.HUGGING_FACE_MODEL ?? "Qwen/Qwen-Image-Edit-2509";
-  const guidanceScale = clampNumber(parseNumber(guidanceScaleInput, 1.0), 0.5, 5);
-  const strength = clampNumber(parseNumber(strengthInput, 0.35), 0.05, 0.95);
-  const trueCfgScale = clampNumber(parseNumber(trueCfgScaleInput, 4.0), 1, 10);
-  const inferenceSteps = clampInteger(parseNumber(inferenceStepsInput, 40), 10, 60);
-  const parsedSeed = parseNumber(seedInput, Number.NaN);
-  const seed = Number.isFinite(parsedSeed) ? Math.floor(parsedSeed) : null;
 
-  const payload: QwenImageEditPayload = {
-    inputs: {
-      prompt: prompt.trim(),
-      image: [`data:${contentType};base64,${base64Input}`],
+  const apiHost = (
+    process.env.GOOGLE_AI_STUDIO_HOST ??
+    "https://generativelanguage.googleapis.com"
+  ).replace(/\/$/, "");
+  const rawModelId =
+    process.env.GOOGLE_AI_STUDIO_MODEL_ID ?? "models/gemini-2.5-flash-image";
+  const modelId = rawModelId.includes("/")
+    ? rawModelId
+    : `models/${rawModelId}`;
+  const modelEndpoint = `${apiHost}/v1beta/${modelId}:generateContent`;
+  const guidanceScale = clampNumber(parseNumber(guidanceScaleInput, 7.5), 1, 20);
+  const strength = clampNumber(parseNumber(strengthInput, 0.35), 0.1, 0.9);
+  const inferenceSteps = clampInteger(
+    parseNumber(inferenceStepsInput, 35),
+    10,
+    60,
+  );
+  const parsedSeed = parseNumber(seedInput, Number.NaN);
+  const seed = Number.isFinite(parsedSeed) ? Math.floor(parsedSeed) : undefined;
+
+  const imageBase64 = imageBuffer.toString("base64");
+  const promptPieces = [prompt.trim()];
+  if (typeof negativePrompt === "string" && negativePrompt.trim()) {
+    promptPieces.push(`Avoid: ${negativePrompt.trim()}.`);
+  }
+  promptPieces.push(
+    "Use the provided reference photo to preserve layout and perspective.",
+  );
+  if (inferenceSteps) {
+    promptPieces.push(`Target roughly ${inferenceSteps} refinement steps.`);
+  }
+  promptPieces.push(`Apply changes with an intensity of ${strength}.`);
+  const primaryPrompt = promptPieces.join(" ");
+
+  const userParts: Array<Record<string, unknown>> = [
+    { text: primaryPrompt },
+    {
+      inlineData: {
+        mimeType: contentType,
+        data: imageBase64,
+      },
     },
-    parameters: {
-      guidance_scale: guidanceScale,
-      strength,
-      true_cfg_scale: trueCfgScale,
-      num_inference_steps: inferenceSteps,
-    },
-    options: {
-      wait_for_model: true,
-      use_gpu: true,
+  ];
+
+  let maskBuffer: Buffer | null = null;
+
+  if (mask instanceof File) {
+    maskBuffer = Buffer.from(await mask.arrayBuffer());
+    userParts.push({
+      text: "The following inline data is a PNG mask: white pixels mark regions to edit, black pixels should remain untouched.",
+    });
+    userParts.push({
+      inlineData: {
+        mimeType: "image/png",
+        data: maskBuffer.toString("base64"),
+      },
+    });
+  }
+
+  if (typeof seed === "number") {
+    userParts.push({
+      text: `Use a seed of ${seed} if deterministic behavior is supported.`,
+    });
+  }
+
+  const payload = {
+    model: modelId,
+    contents: [
+      {
+        role: "user" as const,
+        parts: userParts,
+      },
+    ],
+    generationConfig: {
+      candidateCount: 1,
+      temperature: clampNumber(guidanceScale / 10, 0, 1),
+      responseModalities: ["IMAGE"],
     },
   };
 
-  if (typeof negativePrompt === "string" && negativePrompt.trim()) {
-    payload.parameters.negative_prompt = negativePrompt.trim();
-  }
-
-  if (seed !== null && Number.isFinite(seed)) {
-    payload.parameters.seed = seed;
-  }
-
   try {
     const response = await fetch(
-      `https://api-inference.huggingface.co/models/${modelId}`,
+      modelEndpoint,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
           "Content-Type": "application/json",
+          "x-goog-api-key": process.env.GOOGLE_AI_STUDIO_API_KEY!,
         },
         body: JSON.stringify(payload),
       },
@@ -94,37 +143,85 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorPayload = await safeJson(response);
+      const rawBody = await response.text();
       return NextResponse.json(
         {
           error:
-            errorPayload?.error ??
-            errorPayload?.message ??
+            formatErrorMessage(errorPayload) ??
+            (rawBody ? rawBody.slice(0, 160) : undefined) ??
             `Image edit failed with status ${response.status}`,
         },
         { status: response.status },
       );
     }
 
-    const responseType = response.headers.get("content-type") ?? "";
-    if (responseType.includes("application/json")) {
-      const errorPayload = await response.json();
+    const json: GoogleGenerateContentResponse = await response.json();
+    const candidates = Array.isArray(json?.candidates) ? json.candidates : [];
+    const inlinePart = candidates
+      .flatMap((candidate) => candidate.content?.parts ?? [])
+      .find((part) => {
+        const inlineData = part?.inlineData;
+        return (
+          inlineData?.mimeType?.startsWith("image/") &&
+          typeof inlineData?.data === "string"
+        );
+      });
+
+    if (!inlinePart) {
       return NextResponse.json(
-        {
-          error:
-            errorPayload?.error ??
-            errorPayload?.message ??
-            "The Hugging Face model returned an unexpected response.",
-        },
+        { error: "Google AI Studio did not return an image candidate." },
         { status: 502 },
       );
     }
 
-    const responseArrayBuffer = await response.arrayBuffer();
-    const base64Image = Buffer.from(responseArrayBuffer).toString("base64");
-    const outputType = responseType || "image/png";
+    const inlineData = inlinePart.inlineData as {
+      mimeType?: string;
+      data?: string;
+    };
+    const generatedBuffer = Buffer.from(inlineData.data ?? "", "base64");
+
+    const baseSharp = sharp(imageBuffer);
+    const { width: originalWidth, height: originalHeight } =
+      await baseSharp.metadata();
+    const width = originalWidth ?? originalHeight ?? 1024;
+    const height = originalHeight ?? originalWidth ?? 1024;
+
+    const baseImage = await baseSharp
+      .resize(width, height, { fit: "cover" })
+      .ensureAlpha()
+      .png()
+      .toBuffer();
+
+    const generatedImage = await sharp(generatedBuffer)
+      .resize(width, height, { fit: "cover" })
+      .ensureAlpha()
+      .toBuffer();
+
+    let finalBuffer: Buffer;
+
+    if (maskBuffer) {
+      const alphaChannel = await sharp(maskBuffer)
+        .resize(width, height, { fit: "cover" })
+        .toColourspace("b-w")
+        .linear(strength, 0)
+        .toBuffer();
+
+      const overlay = await sharp(generatedImage)
+        .removeAlpha()
+        .joinChannel(alphaChannel)
+        .png()
+        .toBuffer();
+
+      finalBuffer = await sharp(baseImage)
+        .composite([{ input: overlay, blend: "over" }])
+        .png()
+        .toBuffer();
+    } else {
+      finalBuffer = await sharp(generatedImage).png().toBuffer();
+    }
 
     return NextResponse.json({
-      image: `data:${outputType};base64,${base64Image}`,
+      image: `data:image/png;base64,${finalBuffer.toString("base64")}`,
     });
   } catch (error) {
     console.error(error);
@@ -137,7 +234,25 @@ export async function POST(request: Request) {
 
 async function safeJson(response: Response) {
   try {
-    return await response.json();
+    return await response.clone().json();
+  } catch {
+    return null;
+  }
+}
+
+function formatErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const error = (payload as Record<string, unknown>).error;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) return message;
+    return JSON.stringify(error);
+  }
+  const message = (payload as Record<string, unknown>).message;
+  if (typeof message === "string" && message.trim()) return message;
+  try {
+    return JSON.stringify(payload);
   } catch {
     return null;
   }
@@ -152,26 +267,8 @@ function parseNumber(value: FormDataEntryValue | null, fallback: number): number
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
+
 function clampInteger(value: number, min: number, max: number): number {
   const rounded = Math.round(value);
   return Math.min(Math.max(rounded, min), max);
 }
-
-type QwenImageEditPayload = {
-  inputs: {
-    prompt: string;
-    image: string[];
-  };
-  parameters: {
-    guidance_scale: number;
-    strength: number;
-    true_cfg_scale: number;
-    num_inference_steps: number;
-    negative_prompt?: string;
-    seed?: number;
-  };
-  options: {
-    wait_for_model: boolean;
-    use_gpu?: boolean;
-  };
-};
