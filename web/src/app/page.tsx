@@ -771,7 +771,7 @@ export default function Home() {
         : [];
 
       const parsedResults: ShoppingResult[] = rawResults
-        .map((entry) => {
+        .map((entry): ShoppingResult | null => {
           const title =
             typeof entry.title === "string" ? entry.title.trim() : "";
           const link =
@@ -796,7 +796,7 @@ export default function Home() {
               typeof entry.shipping === "string" ? entry.shipping : null,
             position:
               typeof entry.position === "number" ? entry.position : null,
-            clipScore: null,
+            clipScore: null as number | null,
           };
         })
         .filter((item): item is ShoppingResult => item !== null);

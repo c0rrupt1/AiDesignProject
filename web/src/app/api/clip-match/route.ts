@@ -11,23 +11,27 @@ type ClipResult = {
   score: number;
 };
 
-let pipelinePromise:
-  | Promise<
-      (input: Blob, options?: Record<string, unknown>) => Promise<{
-        data: Float32Array;
-      }>
-    >
-  | null = null;
+type TransformersModule = typeof import("@xenova/transformers");
+type ImageFeatureExtractionPipeline =
+  TransformersModule["ImageFeatureExtractionPipeline"];
+type RawImageConstructor = TransformersModule["RawImage"];
 
-async function getClipExtractor() {
+type ClipExtractor = {
+  pipeline: ImageFeatureExtractionPipeline;
+  RawImage: RawImageConstructor;
+};
+
+let pipelinePromise: Promise<ClipExtractor> | null = null;
+
+async function getClipExtractor(): Promise<ClipExtractor> {
   if (!pipelinePromise) {
     pipelinePromise = (async () => {
       const transformers = await import("@xenova/transformers");
-      const extractor = await transformers.pipeline(
-        "feature-extraction",
+      const pipeline = await transformers.pipeline(
+        "image-feature-extraction",
         "Xenova/clip-vit-base-patch32",
       );
-      return extractor;
+      return { pipeline, RawImage: transformers.RawImage };
     })();
   }
   return pipelinePromise;
@@ -71,11 +75,15 @@ function dotProduct(a: Float32Array, b: Float32Array): number {
 }
 
 async function embeddingFor(
-  extractor: Awaited<ReturnType<typeof getClipExtractor>>,
+  extractor: ClipExtractor,
   source: Blob,
 ): Promise<Float32Array> {
-  const tensor = await extractor(source, { pooling: "mean", normalize: true });
-  return tensor.data;
+  const image = await extractor.RawImage.fromBlob(source);
+  const tensor = await extractor.pipeline(image, {
+    pooling: "mean",
+    normalize: true,
+  });
+  return tensor.data as Float32Array;
 }
 
 export const runtime = "nodejs";
@@ -139,7 +147,10 @@ export async function POST(request: Request) {
     for (const url of trimmedCandidates) {
       try {
         const candidateBlob = await blobFromSource(url);
-        const candidateEmbedding = await embeddingFor(extractor, candidateBlob);
+        const candidateEmbedding = await embeddingFor(
+          extractor,
+          candidateBlob,
+        );
         const score = dotProduct(referenceEmbedding, candidateEmbedding);
         scores.push({ url, score });
       } catch (error) {
