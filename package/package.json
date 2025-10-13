@@ -1,0 +1,32 @@
+{
+  "name": "reverse-image-search",
+  "version": "0.0.0",
+  "description": "library & executable for reverse image searches",
+  "main": "./lib/index.js",
+  "bin": {
+    "ris": "./bin/main.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://git.querie.cc/libs/reverse-image-search.git"
+  },
+  "keywords": [ "reverse", "image", "search", "reverse image search", "google", "images", "reverse-image-search" ],
+  "author": [
+    {
+      "name" : "Jay Querie",
+      "email" : "jay@querie.cc",
+      "url" : "https://querie.cc"
+    }
+  ],
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "chrome-remote-interface": "^0.27.1",
+    "minimist": "^1.2.0"
+  },
+  "devDependencies": {
+    "prettier": "^1.16.4"
+  }
+}

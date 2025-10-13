@@ -6,10 +6,12 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:reverse": "node ./scripts/test-reverse-search.mjs"
   },
   "dependencies": {
     "next": "15.5.4",
+    "undici": "^6.19.8",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "sharp": "^0.34.4"
@@ -23,6 +25,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "undici-types": "^6"
   }
 }
