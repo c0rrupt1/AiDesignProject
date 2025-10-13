@@ -1,0 +1,164 @@
+import { NextResponse } from "next/server";
+
+type ClipRequestBody = {
+  referenceImage?: string;
+  candidateImages?: string[];
+  limit?: number;
+};
+
+type ClipResult = {
+  url: string;
+  score: number;
+};
+
+let pipelinePromise:
+  | Promise<
+      (input: Blob, options?: Record<string, unknown>) => Promise<{
+        data: Float32Array;
+      }>
+    >
+  | null = null;
+
+async function getClipExtractor() {
+  if (!pipelinePromise) {
+    pipelinePromise = (async () => {
+      const transformers = await import("@xenova/transformers");
+      const extractor = await transformers.pipeline(
+        "feature-extraction",
+        "Xenova/clip-vit-base-patch32",
+      );
+      return extractor;
+    })();
+  }
+  return pipelinePromise;
+}
+
+function ensureDataUrl(value: string): Blob {
+  const match = value.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {
+    throw new Error("referenceImage must be a base64 data URL.");
+  }
+  const [, mimeType, payload] = match;
+  const buffer = Buffer.from(payload, "base64");
+  return new Blob([buffer], { type: mimeType || "application/octet-stream" });
+}
+
+async function blobFromSource(url: string): Promise<Blob> {
+  if (!url) {
+    throw new Error("Encountered empty candidate image URL.");
+  }
+  if (url.startsWith("data:")) {
+    return ensureDataUrl(url);
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch candidate image (${response.status}).`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const contentType = response.headers.get("content-type") ?? "image/png";
+  return new Blob([arrayBuffer], { type: contentType });
+}
+
+function dotProduct(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length) {
+    throw new Error("Embedding vectors must have the same length.");
+  }
+  let total = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    total += a[i] * b[i];
+  }
+  return total;
+}
+
+async function embeddingFor(
+  extractor: Awaited<ReturnType<typeof getClipExtractor>>,
+  source: Blob,
+): Promise<Float32Array> {
+  const tensor = await extractor(source, { pooling: "mean", normalize: true });
+  return tensor.data;
+}
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+export async function POST(request: Request) {
+  let body: ClipRequestBody;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON body provided." },
+      { status: 400 },
+    );
+  }
+
+  const referenceImage =
+    typeof body.referenceImage === "string" ? body.referenceImage.trim() : "";
+  const candidateImages = Array.isArray(body.candidateImages)
+    ? body.candidateImages.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0,
+      )
+    : [];
+
+  if (!referenceImage) {
+    return NextResponse.json(
+      { error: "referenceImage must be provided as a base64 data URL." },
+      { status: 400 },
+    );
+  }
+
+  if (candidateImages.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Provide at least one candidate image URL or data URL to compare.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const limit =
+    typeof body.limit === "number" && Number.isFinite(body.limit)
+      ? Math.max(1, Math.floor(body.limit))
+      : undefined;
+
+  const trimmedCandidates =
+    typeof limit === "number"
+      ? candidateImages.slice(0, limit)
+      : candidateImages;
+
+  try {
+    const extractor = await getClipExtractor();
+    const referenceBlob = ensureDataUrl(referenceImage);
+    const referenceEmbedding = await embeddingFor(extractor, referenceBlob);
+
+    const scores: ClipResult[] = [];
+
+    for (const url of trimmedCandidates) {
+      try {
+        const candidateBlob = await blobFromSource(url);
+        const candidateEmbedding = await embeddingFor(extractor, candidateBlob);
+        const score = dotProduct(referenceEmbedding, candidateEmbedding);
+        scores.push({ url, score });
+      } catch (error) {
+        console.error(`Failed to process candidate image ${url}`, error);
+      }
+    }
+
+    scores.sort((a, b) => b.score - a.score);
+    return NextResponse.json({ results: scores });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unexpected error while ranking images.",
+      },
+      { status: 500 },
+    );
+  }
+}

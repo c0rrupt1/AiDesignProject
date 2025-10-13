@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 
-import type { GoogleGenerateContentResponse } from "./types";
+import type { OpenRouterChatCompletionsResponse } from "./types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,9 +14,11 @@ export const config = {
 };
 
 export async function POST(request: Request) {
-  if (!process.env.GOOGLE_AI_STUDIO_API_KEY) {
+  const openRouterApiKey = process.env.OPENROUTER_API_KEY?.trim();
+
+  if (!openRouterApiKey) {
     return NextResponse.json(
-      { error: "GOOGLE_AI_STUDIO_API_KEY is not set on the server." },
+      { error: "OPENROUTER_API_KEY is not set on the server." },
       { status: 500 },
     );
   }
@@ -48,16 +50,12 @@ export async function POST(request: Request) {
   const imageBuffer = Buffer.from(await image.arrayBuffer());
   const contentType = image.type || "image/png";
 
-  const apiHost = (
-    process.env.GOOGLE_AI_STUDIO_HOST ??
-    "https://generativelanguage.googleapis.com"
+  const apiBaseUrl = (
+    process.env.OPENROUTER_API_BASE_URL ?? "https://openrouter.ai/api/v1"
   ).replace(/\/$/, "");
-  const rawModelId =
-    process.env.GOOGLE_AI_STUDIO_MODEL_ID ?? "models/gemini-2.5-flash-image";
-  const modelId = rawModelId.includes("/")
-    ? rawModelId
-    : `models/${rawModelId}`;
-  const modelEndpoint = `${apiHost}/v1beta/${modelId}:generateContent`;
+  const modelId =
+    process.env.OPENROUTER_IMAGE_MODEL ??
+    "google/gemini-2.5-flash-image-preview";
   const guidanceScale = clampNumber(parseNumber(guidanceScaleInput, 7.5), 1, 20);
   const strength = clampNumber(parseNumber(strengthInput, 0.35), 0.1, 0.9);
   const inferenceSteps = clampInteger(
@@ -82,12 +80,16 @@ export async function POST(request: Request) {
   promptPieces.push(`Apply changes with an intensity of ${strength}.`);
   const primaryPrompt = promptPieces.join(" ");
 
-  const userParts: Array<Record<string, unknown>> = [
-    { text: primaryPrompt },
+  const temperature = clampNumber(guidanceScale / 10, 0, 2);
+  const messageContent: Array<Record<string, unknown>> = [
     {
-      inlineData: {
-        mimeType: contentType,
-        data: imageBase64,
+      type: "text",
+      text: primaryPrompt,
+    },
+    {
+      type: "image_url",
+      image_url: {
+        url: `data:${contentType};base64,${imageBase64}`,
       },
     },
   ];
@@ -96,50 +98,56 @@ export async function POST(request: Request) {
 
   if (mask instanceof File) {
     maskBuffer = Buffer.from(await mask.arrayBuffer());
-    userParts.push({
-      text: "The following inline data is a PNG mask: white pixels mark regions to edit, black pixels should remain untouched.",
+    messageContent.push({
+      type: "text",
+      text: "The following image is a PNG mask: white pixels mark regions to edit, black pixels should remain untouched.",
     });
-    userParts.push({
-      inlineData: {
-        mimeType: "image/png",
-        data: maskBuffer.toString("base64"),
+    messageContent.push({
+      type: "image_url",
+      image_url: {
+        url: `data:image/png;base64,${maskBuffer.toString("base64")}`,
       },
     });
   }
 
   if (typeof seed === "number") {
-    userParts.push({
+    messageContent.push({
+      type: "text",
       text: `Use a seed of ${seed} if deterministic behavior is supported.`,
     });
   }
 
   const payload = {
     model: modelId,
-    contents: [
+    messages: [
       {
         role: "user" as const,
-        parts: userParts,
+        content: messageContent,
       },
     ],
-    generationConfig: {
-      candidateCount: 1,
-      temperature: clampNumber(guidanceScale / 10, 0, 1),
-      responseModalities: ["IMAGE"],
-    },
+    modalities: ["image", "text"],
+    temperature,
   };
 
   try {
-    const response = await fetch(
-      modelEndpoint,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": process.env.GOOGLE_AI_STUDIO_API_KEY!,
-        },
-        body: JSON.stringify(payload),
-      },
-    );
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openRouterApiKey}`,
+    };
+
+    if (process.env.OPENROUTER_HTTP_REFERER) {
+      headers["HTTP-Referer"] = process.env.OPENROUTER_HTTP_REFERER;
+    }
+
+    if (process.env.OPENROUTER_APP_TITLE) {
+      headers["X-Title"] = process.env.OPENROUTER_APP_TITLE;
+    }
+
+    const response = await fetch(`${apiBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
 
     if (!response.ok) {
       const errorPayload = await safeJson(response);
@@ -155,30 +163,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const json: GoogleGenerateContentResponse = await response.json();
-    const candidates = Array.isArray(json?.candidates) ? json.candidates : [];
-    const inlinePart = candidates
-      .flatMap((candidate) => candidate.content?.parts ?? [])
-      .find((part) => {
-        const inlineData = part?.inlineData;
-        return (
-          inlineData?.mimeType?.startsWith("image/") &&
-          typeof inlineData?.data === "string"
-        );
-      });
+    const json: OpenRouterChatCompletionsResponse = await response.json();
+    const imageDataUrl = extractFirstImageUrl(json);
 
-    if (!inlinePart) {
+    if (!imageDataUrl) {
       return NextResponse.json(
-        { error: "Google AI Studio did not return an image candidate." },
+        { error: "OpenRouter did not return an image candidate." },
         { status: 502 },
       );
     }
 
-    const inlineData = inlinePart.inlineData as {
-      mimeType?: string;
-      data?: string;
-    };
-    const generatedBuffer = Buffer.from(inlineData.data ?? "", "base64");
+    const parsedImage = parseDataUrl(imageDataUrl);
+    if (!parsedImage) {
+      return NextResponse.json(
+        { error: "Received an unrecognised image payload from OpenRouter." },
+        { status: 502 },
+      );
+    }
+
+    const generatedBuffer = Buffer.from(parsedImage.base64Data, "base64");
 
     const baseSharp = sharp(imageBuffer);
     const { width: originalWidth, height: originalHeight } =
@@ -230,6 +233,92 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+function extractFirstImageUrl(
+  payload: OpenRouterChatCompletionsResponse,
+): string | null {
+  const choices = Array.isArray(payload?.choices) ? payload.choices : [];
+
+  for (const choice of choices) {
+    const message = choice?.message;
+    if (!message || typeof message !== "object") continue;
+
+    const images = Array.isArray(message.images) ? message.images : [];
+    const imageFromImages = images
+      .map((image) => image?.image_url?.url)
+      .find((url): url is string => typeof url === "string" && url.trim().length > 0);
+    if (imageFromImages) {
+      return imageFromImages;
+    }
+
+    const content = message.content;
+    if (Array.isArray(content)) {
+      const imageFromContent = content
+        .map((part) => {
+          if (!part || typeof part !== "object") return null;
+          const typedPart = part as Record<string, unknown>;
+          if (
+            typedPart.type === "image_url" &&
+            typeof (typedPart.image_url as { url?: string } | undefined)?.url === "string"
+          ) {
+            return (typedPart.image_url as { url?: string }).url ?? null;
+          }
+          if (
+            typedPart.type === "output_image" &&
+            typeof typedPart.b64_json === "string"
+          ) {
+            return `data:image/png;base64,${typedPart.b64_json}`;
+          }
+          return null;
+        })
+        .find((url): url is string => typeof url === "string" && url.trim().length > 0);
+
+      if (imageFromContent) {
+        return imageFromContent;
+      }
+    } else if (content && typeof content === "object") {
+      const typedContent = content as Record<string, unknown>;
+      if (
+        typedContent.type === "image_url" &&
+        typeof (typedContent.image_url as { url?: string } | undefined)?.url === "string"
+      ) {
+        const url = (typedContent.image_url as { url?: string }).url;
+        if (typeof url === "string" && url.trim().length > 0) {
+          return url;
+        }
+      }
+      if (
+        typedContent.type === "output_image" &&
+        typeof typedContent.b64_json === "string"
+      ) {
+        return `data:image/png;base64,${typedContent.b64_json}`;
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseDataUrl(
+  value: string,
+): { mimeType: string; base64Data: string } | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("data:")) {
+    const match = trimmed.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!match) return null;
+    const [, mimeType, base64Data] = match;
+    if (!base64Data) return null;
+    return { mimeType, base64Data };
+  }
+
+  return {
+    mimeType: "image/png",
+    base64Data: trimmed,
+  };
 }
 
 async function safeJson(response: Response) {
