@@ -12,6 +12,7 @@ type SerpShoppingResult = {
   price?: string;
   extracted_price?: number;
   thumbnail?: string;
+  serpapi_thumbnail?: string;
   image?: string;
   shipping?: string;
   position?: number;

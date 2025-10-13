@@ -12,12 +12,12 @@ type ClipResult = {
 };
 
 type TransformersModule = typeof import("@xenova/transformers");
-type ImageFeatureExtractionPipeline =
-  TransformersModule["ImageFeatureExtractionPipeline"];
 type RawImageConstructor = TransformersModule["RawImage"];
 
 type ClipExtractor = {
-  pipeline: ImageFeatureExtractionPipeline;
+  pipeline: InstanceType<
+    TransformersModule["ImageFeatureExtractionPipeline"]
+  >;
   RawImage: RawImageConstructor;
 };
 
@@ -79,11 +79,43 @@ async function embeddingFor(
   source: Blob,
 ): Promise<Float32Array> {
   const image = await extractor.RawImage.fromBlob(source);
-  const tensor = await extractor.pipeline(image, {
-    pooling: "mean",
-    normalize: true,
-  });
-  return tensor.data as Float32Array;
+  const tensor = await extractor.pipeline(image);
+  const raw = Float32Array.from(tensor.data as ArrayLike<number>);
+  const dims = Array.isArray(tensor.dims) ? tensor.dims : [];
+  const hiddenSize = dims.length > 0 ? dims[dims.length - 1] : raw.length;
+
+  let embedding: Float32Array;
+  if (
+    hiddenSize > 0 &&
+    raw.length > hiddenSize &&
+    Number.isInteger(raw.length / hiddenSize)
+  ) {
+    const steps = raw.length / hiddenSize;
+    embedding = new Float32Array(hiddenSize);
+    for (let step = 0; step < steps; step += 1) {
+      const offset = step * hiddenSize;
+      for (let i = 0; i < hiddenSize; i += 1) {
+        embedding[i] += raw[offset + i];
+      }
+    }
+    for (let i = 0; i < hiddenSize; i += 1) {
+      embedding[i] /= steps;
+    }
+  } else {
+    embedding = raw;
+  }
+
+  let norm = 0;
+  for (let i = 0; i < embedding.length; i += 1) {
+    norm += embedding[i] * embedding[i];
+  }
+  const magnitude = Math.sqrt(norm);
+  if (magnitude > 0) {
+    for (let i = 0; i < embedding.length; i += 1) {
+      embedding[i] /= magnitude;
+    }
+  }
+  return embedding;
 }
 
 export const runtime = "nodejs";

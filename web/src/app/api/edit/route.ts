@@ -308,7 +308,7 @@ function parseDataUrl(
   if (!trimmed) return null;
 
   if (trimmed.startsWith("data:")) {
-    const match = trimmed.match(/^data:([^;]+);base64,(.+)$/s);
+    const match = trimmed.match(/^data:([^;]+);base64,([\s\S]+)$/);
     if (!match) return null;
     const [, mimeType, base64Data] = match;
     if (!base64Data) return null;
