@@ -906,336 +906,468 @@ export default function Home() {
   };
 
   return (
-    <div className="font-sans min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto flex max-w-5xl flex-col gap-10 px-6 pb-16 pt-12 md:px-12">
-        <section className="space-y-4">
-          <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-amber-400">
-            Home Stylist
-          </p>
-          <h1 className="text-3xl font-semibold leading-tight md:text-4xl">
-            Transform rooms with AI makeovers
-          </h1>
-          <p className="max-w-2xl text-base text-slate-300 md:text-lg">
-            Upload a photo of your space, paint the areas you want to restyle,
-            and generate AI-powered makeovers tailored to your prompt.
-          </p>
-        </section>
-        <form
-          onSubmit={onSubmit}
-          className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-amber-500/20 backdrop-blur-md md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:p-8"
-        >
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+      <div className="pointer-events-none absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.15),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(56,189,248,0.12),_transparent_60%)]" />
+      <div className="pointer-events-none absolute -top-52 right-10 -z-10 h-[24rem] w-[24rem] rounded-full bg-amber-400/25 blur-[140px]" />
+      <div className="pointer-events-none absolute -bottom-72 left-[-10rem] -z-10 h-[28rem] w-[28rem] rounded-full bg-sky-500/20 blur-[150px]" />
+      <header className="relative border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-6 md:px-10">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-300/60 bg-amber-400/20 text-lg font-semibold text-amber-200">
+              HS
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
+                Gemma Studio
+              </p>
+              <p className="text-lg font-semibold text-slate-100 md:text-xl">
+                Home Stylist Workspace
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+            <span className="rounded-full border border-white/15 bg-white/10 px-4 py-1 font-semibold uppercase tracking-[0.4em]">
+              Working Dev
+            </span>
+            <span className="hidden sm:block">
+              Iterate freely—your progress stays on this branch.
+            </span>
+          </div>
+        </div>
+      </header>
+      <main className="relative mx-auto max-w-6xl px-6 pb-24 pt-16 md:px-10">
+        <section className="overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-slate-900/95 via-slate-900/60 to-slate-900/20 p-10 shadow-[0_48px_140px_-72px_rgba(15,23,42,1)] ring-1 ring-white/10">
+          <div className="grid gap-12 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)] lg:items-center">
             <div className="space-y-6">
-              <label className="flex h-48 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-amber-500/70 bg-black/30 text-center text-sm transition hover:bg-black/20">
-                <input
-                  type="file"
-                  name="image"
-                  accept="image/*"
-                  onChange={onBaseImageChange}
-                  className="hidden"
-                />
-                <span className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-400">
-                  Photo
-                </span>
-                <span className="max-w-[14rem] text-sm font-medium text-slate-200">
-                  {previewLabel}
-                </span>
-                <span className="text-xs text-slate-400">
-                  PNG or JPG up to 8&nbsp;MB
-                </span>
-              </label>
-              {previewUrl ? (
-                <div className="space-y-4">
-                  <div className="space-y-3 rounded-2xl border border-white/10 bg-black/40 p-4">
-                    <figcaption className="text-sm font-medium text-slate-200">
-                      Mask painter
-                    </figcaption>
-                    <div
-                      className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30"
-                      style={{
-                        aspectRatio: imageDimensions
-                          ? `${imageDimensions.width} / ${imageDimensions.height}`
-                          : "4 / 3",
-                      }}
-                    >
-                      <img
-                        src={previewUrl}
-                        alt="Base preview"
-                        className="absolute inset-0 h-full w-full object-cover"
-                        draggable={false}
-                      />
-                      <canvas
-                        ref={maskCanvasRef}
-                        className="absolute inset-0 h-full w-full cursor-crosshair opacity-70 mix-blend-screen touch-none"
-                        style={{ width: "100%", height: "100%" }}
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          handlePointerDown(event);
-                        }}
-                        onPointerMove={handlePointerMove}
-                        onPointerUp={stopDrawing}
-                        onPointerLeave={() => stopDrawing()}
-                        onPointerCancel={stopDrawing}
-                        onContextMenu={(event) => event.preventDefault()}
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                          Mode
-                        </span>
-                        <div className="flex overflow-hidden rounded-xl border border-white/10">
-                          <button
-                            type="button"
-                            onClick={() => setDrawMode("paint")}
-                            className={maskModeButtonClass("paint")}
-                          >
-                            Paint
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDrawMode("erase")}
-                            className={maskModeButtonClass("erase")}
-                          >
-                            Erase
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex min-w-[160px] flex-1 items-center gap-2">
-                        <span className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                          Brush
-                        </span>
-                        <input
-                          type="range"
-                          min={10}
-                          max={200}
-                          step={5}
-                          value={brushSize}
-                          onChange={(event) =>
-                            setBrushSize(Number(event.target.value))
-                          }
-                          className="flex-1 accent-amber-500"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={clearMask}
-                        className="rounded-xl border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:bg-white/10"
-                      >
-                        Clear mask
-                      </button>
-                    </div>
-                    <p className="text-[0.7rem] text-slate-400">
-                      Paint white over the furniture or walls you want the AI to
-                      restyle. Areas left black will stay untouched.
+              <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/50 bg-amber-400/15 px-4 py-1 text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
+                Interior AI
+              </p>
+              <h1 className="text-4xl font-semibold leading-tight md:text-5xl">
+                Stage edited interiors, faster than moodboards or mockups.
+              </h1>
+              <p className="max-w-2xl text-base text-slate-300 md:text-lg">
+                Upload a reference photo, paint the areas you want to transform, and generate layered makeovers you can compare, crop, and shop.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                    Step 1
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-slate-100">
+                    Upload & mark focus
+                  </p>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Import the photo of your space and paint the furniture or walls you’d like Gemma to restyle.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                    Step 2
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-slate-100">
+                    Describe the vibe
+                  </p>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Prompt with materials, palette, and mood—Gemma renders polished makeovers in seconds.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                    Step 3
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-slate-100">
+                    Shop the look
+                  </p>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Generate keywords, filter CLIP matches, and jump straight to purchase-ready products.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6 text-sm text-slate-300 shadow-inner shadow-black/50">
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+                Workflow cheatsheet
+              </p>
+              <ol className="mt-5 space-y-4">
+                <li className="flex gap-3">
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
+                    1
+                  </span>
+                  <div>
+                    <p className="font-medium text-slate-100">
+                      Mask precisely with the brush or eraser
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Hold and drag to paint. Switch modes to erase any overpainting and reset when needed.
                     </p>
                   </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-slate-300">
-                  Upload a photo to unlock the in-browser mask painter.
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-6">
-              <div className="space-y-3">
-                <label
-                  htmlFor="prompt"
-                  className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-400"
-                >
-                  Style prompt
-                </label>
-                <textarea
-                  id="prompt"
-                  placeholder="Describe the atmosphere, materials, palette, or mood you’d like to see."
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  className="min-h-[12rem] w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
-                />
-              </div>
-
-              <div className="grid gap-3 rounded-2xl border border-white/10 bg-black/40 p-4 text-xs text-slate-300">
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Prompt ideas
-                </p>
-                <ul className="grid gap-2 text-sm text-slate-300">
-                  <li>
-                    “Rustic cabin aesthetic with reclaimed wood beams, copper
-                    fixtures, and warm candle lighting.”
-                  </li>
-                  <li>
-                    “Bohemian lounge with layered textiles, hanging plants, and
-                    low ambient lights.”
-                  </li>
-                  <li>
-                    “Minimalist Japanese living room, tatami flooring, and soft
-                    natural light.”
-                  </li>
-                </ul>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-black/40">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvanced((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/5"
-                >
-                  Advanced controls
-                  <span className="text-xs uppercase tracking-[0.3em] text-amber-400">
-                    {showAdvanced ? "Hide" : "Show"}
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
+                    2
                   </span>
-                </button>
-                {showAdvanced && (
-                  <div className="grid gap-4 border-t border-white/5 px-4 py-4 text-sm text-slate-200">
+                  <div>
+                    <p className="font-medium text-slate-100">
+                      Capture multiple variations
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Every makeover you generate is saved below so you can compare prompts or reuse them for shopping.
+                    </p>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
+                    3
+                  </span>
+                  <div>
+                    <p className="font-medium text-slate-100">
+                      Crop before keywording
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Highlight the hero object, then let Gemma return a merchandisable keyword list and CLIP-ranked matches.
+                    </p>
+                  </div>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </section>
+        <section className="mt-14 grid gap-10 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)] lg:items-start">
+          <div className="space-y-10">
+            <form
+              onSubmit={onSubmit}
+              className="space-y-8 rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_55px_160px_-90px_rgba(15,23,42,1)] ring-1 ring-white/10 lg:p-8"
+            >
+              <div className="space-y-8">
+                <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6 lg:p-7">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-2">
-                      <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                        <span>Blend amount (Strength)</span>
-                        <span>{strength.toFixed(2)}</span>
-                      </label>
-                      <input
-                        type="range"
-                        min={0.1}
-                        max={0.9}
-                        step={0.05}
-                        value={strength}
-                        onChange={(event) =>
-                          setStrength(Number(event.target.value))
-                        }
-                        className="w-full accent-amber-500"
-                      />
-                      <p className="text-xs text-slate-400">
-                        Controls how much of the masked area adopts the generated
-                        makeover versus the original photo.
+                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+                        Step 1 — Reference photo
+                      </p>
+                      <h2 className="text-2xl font-semibold text-slate-100">
+                        Upload & outline your space
+                      </h2>
+                      <p className="text-sm text-slate-300">
+                        Start with a clear shot of the room. Paint the furniture or architectural details to tell the model what to restyle.
                       </p>
                     </div>
-
-                    <div className="space-y-2">
-                      <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                        <span>Prompt fidelity (Guidance)</span>
-                        <span>{guidanceScale.toFixed(1)}</span>
-                      </label>
+                    {imageFile && (
+                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                        {imageFile.name}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)]">
+                    <label className="flex h-52 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-amber-400/60 bg-black/20 text-center text-sm transition hover:bg-black/10">
                       <input
-                        type="range"
-                        min={4}
-                        max={12}
-                        step={0.5}
-                        value={guidanceScale}
-                        onChange={(event) =>
-                          setGuidanceScale(Number(event.target.value))
-                        }
-                        className="w-full accent-amber-500"
+                        type="file"
+                        name="image"
+                        accept="image/*"
+                        onChange={onBaseImageChange}
+                        className="hidden"
                       />
-                      <p className="text-xs text-slate-400">
-                        Boost this if instructions are ignored; very high values
-                        can introduce artifacts.
+                      <span className="text-xs font-semibold uppercase tracking-[0.4em] text-amber-300">
+                        Base photo
+                      </span>
+                      <span className="max-w-[14rem] text-sm font-medium text-slate-200">
+                        {previewLabel}
+                      </span>
+                      <span className="text-xs text-slate-400">PNG or JPG up to 8&nbsp;MB</span>
+                    </label>
+                    {previewUrl ? (
+                      <div className="space-y-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+                        <div className="space-y-3">
+                          <figcaption className="text-sm font-medium text-slate-200">
+                            Mask painter
+                          </figcaption>
+                          <div
+                            className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30"
+                            style={{
+                              aspectRatio: imageDimensions
+                                ? `${imageDimensions.width} / ${imageDimensions.height}`
+                                : "4 / 3",
+                            }}
+                          >
+                            <img
+                              src={previewUrl}
+                              alt="Base preview"
+                              className="absolute inset-0 h-full w-full object-cover"
+                              draggable={false}
+                            />
+                            <canvas
+                              ref={maskCanvasRef}
+                              className="absolute inset-0 h-full w-full cursor-crosshair opacity-70 mix-blend-screen touch-none"
+                              style={{ width: "100%", height: "100%" }}
+                              onPointerDown={(event) => {
+                                event.preventDefault();
+                                handlePointerDown(event);
+                              }}
+                              onPointerMove={handlePointerMove}
+                              onPointerUp={stopDrawing}
+                              onPointerLeave={() => stopDrawing()}
+                              onPointerCancel={stopDrawing}
+                              onContextMenu={(event) => event.preventDefault()}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                              Mode
+                            </span>
+                            <div className="flex overflow-hidden rounded-xl border border-white/10">
+                              <button
+                                type="button"
+                                onClick={() => setDrawMode("paint")}
+                                className={maskModeButtonClass("paint")}
+                              >
+                                Paint
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDrawMode("erase")}
+                                className={maskModeButtonClass("erase")}
+                              >
+                                Erase
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex min-w-[160px] flex-1 items-center gap-2">
+                            <span className="text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                              Brush
+                            </span>
+                            <input
+                              type="range"
+                              min={10}
+                              max={200}
+                              step={5}
+                              value={brushSize}
+                              onChange={(event) => setBrushSize(Number(event.target.value))}
+                              className="flex-1 accent-amber-500"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={clearMask}
+                            className="rounded-xl border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:bg-white/10"
+                          >
+                            Clear mask
+                          </button>
+                        </div>
+                        <p className="text-[0.7rem] text-slate-400">
+                          Paint white over the furniture or walls you want the AI to transform. Areas left black will remain untouched.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex min-h-[13rem] items-center justify-center rounded-2xl border border-dashed border-white/15 bg-black/20 p-4 text-sm text-slate-400">
+                        Upload a photo to unlock the in-browser mask painter.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-3xl border border-white/10 bg-slate-950/55 p-6 lg:p-7">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+                      Step 2 — Style prompt
+                    </p>
+                    <h2 className="text-2xl font-semibold text-slate-100">
+                      Describe the makeover direction
+                    </h2>
+                    <p className="text-sm text-slate-300">
+                      Spell out the mood, palette, or materials you want. Gemma follows descriptive instructions best.
+                    </p>
+                  </div>
+                  <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+                    <textarea
+                      id="prompt"
+                      placeholder="Describe the atmosphere, materials, palette, or mood you’d like to see."
+                      value={prompt}
+                      onChange={(event) => setPrompt(event.target.value)}
+                      className="min-h-[12rem] w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+                    />
+                    <div className="space-y-3 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
+                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                        Prompt ideas
                       </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                        <span>Detail steps</span>
-                        <span>{inferenceSteps}</span>
-                      </label>
-                      <input
-                        type="range"
-                        min={20}
-                        max={60}
-                        step={1}
-                        value={inferenceSteps}
-                        onChange={(event) =>
-                          setInferenceSteps(Number(event.target.value))
-                        }
-                        className="w-full accent-amber-500"
-                      />
-                      <p className="text-xs text-slate-400">
-                        More steps yield cleaner results but increase inference
-                        time.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="negativePrompt"
-                        className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
-                      >
-                        Negative prompt
-                      </label>
-                      <textarea
-                        id="negativePrompt"
-                        placeholder="Elements to avoid (e.g. text overlays, extra furniture, unrealistic lighting)."
-                        value={negativePrompt}
-                        onChange={(event) =>
-                          setNegativePrompt(event.target.value)
-                        }
-                        className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
-                        rows={3}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="seed"
-                        className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400"
-                      >
-                        Seed (optional)
-                      </label>
-                      <input
-                        id="seed"
-                        type="number"
-                        inputMode="numeric"
-                        value={seed}
-                        onChange={(event) => setSeed(event.target.value)}
-                        className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
-                      />
-                      <p className="text-xs text-slate-400">
-                        Use the same seed to reproduce results. Leave blank for
-                        variation.
-                      </p>
+                      <ul className="space-y-3 text-sm text-slate-300">
+                        <li>
+                          “Rustic cabin aesthetic with reclaimed wood beams, copper fixtures, and warm candle lighting.”
+                        </li>
+                        <li>
+                          “Bohemian lounge with layered textiles, hanging plants, and low ambient lights.”
+                        </li>
+                        <li>
+                          “Minimalist Japanese living room, tatami flooring, and soft natural light.”
+                        </li>
+                      </ul>
                     </div>
                   </div>
+                </div>
+                <div className="rounded-3xl border border-white/10 bg-slate-950/55 p-6 lg:p-7">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+                        Step 3 — Fine-tune
+                      </p>
+                      <h2 className="text-2xl font-semibold text-slate-100">
+                        Advanced controls
+                      </h2>
+                      <p className="text-sm text-slate-300">
+                        Adjust how dramatically the makeover diverges from the original and how closely it follows your prompt.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvanced((prev) => !prev)}
+                      className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-slate-100 transition hover:bg-white/15"
+                    >
+                      {showAdvanced ? "Hide controls" : "Show controls"}
+                    </button>
+                  </div>
+                  {showAdvanced && (
+                    <div className="mt-6 grid gap-5 border-t border-white/5 pt-5 text-sm text-slate-200">
+                      <div className="space-y-2">
+                        <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          <span>Blend amount (Strength)</span>
+                          <span>{strength.toFixed(2)}</span>
+                        </label>
+                        <input
+                          type="range"
+                          min={0.1}
+                          max={0.9}
+                          step={0.05}
+                          value={strength}
+                          onChange={(event) => setStrength(Number(event.target.value))}
+                          className="w-full accent-amber-500"
+                        />
+                        <p className="text-xs text-slate-400">
+                          Controls how much of the masked area adopts the generated makeover versus the original photo.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          <span>Prompt fidelity (Guidance)</span>
+                          <span>{guidanceScale.toFixed(1)}</span>
+                        </label>
+                        <input
+                          type="range"
+                          min={4}
+                          max={12}
+                          step={0.5}
+                          value={guidanceScale}
+                          onChange={(event) => setGuidanceScale(Number(event.target.value))}
+                          className="w-full accent-amber-500"
+                        />
+                        <p className="text-xs text-slate-400">
+                          Boost this if instructions are ignored; very high values can introduce artifacts.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          <span>Detail steps</span>
+                          <span>{inferenceSteps}</span>
+                        </label>
+                        <input
+                          type="range"
+                          min={20}
+                          max={60}
+                          step={1}
+                          value={inferenceSteps}
+                          onChange={(event) => setInferenceSteps(Number(event.target.value))}
+                          className="w-full accent-amber-500"
+                        />
+                        <p className="text-xs text-slate-400">
+                          More steps yield cleaner results but increase inference time.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="negativePrompt"
+                          className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400"
+                        >
+                          Negative prompt
+                        </label>
+                        <textarea
+                          id="negativePrompt"
+                          placeholder="Elements to avoid (e.g. text overlays, extra furniture, unrealistic lighting)."
+                          value={negativePrompt}
+                          onChange={(event) => setNegativePrompt(event.target.value)}
+                          className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+                          rows={3}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="seed"
+                          className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400"
+                        >
+                          Seed (optional)
+                        </label>
+                        <input
+                          id="seed"
+                          type="number"
+                          inputMode="numeric"
+                          value={seed}
+                          onChange={(event) => setSeed(event.target.value)}
+                          className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+                        />
+                        <p className="text-xs text-slate-400">
+                          Use the same seed to reproduce results. Leave blank for variation.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {errorMessage && (
+                  <p className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {errorMessage}
+                  </p>
                 )}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <p className="text-xs text-slate-500">
+                    Rendering usually takes 10–20 seconds. Stay on the page while we craft your makeover.
+                  </p>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="flex items-center justify-center gap-2 rounded-full bg-amber-500 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
+                  >
+                    {isLoading ? (
+                      <span className="flex items-center gap-2">
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
+                        Styling in progress…
+                      </span>
+                    ) : (
+                      "Generate makeover"
+                    )}
+                  </button>
+                </div>
               </div>
-
-              {errorMessage && (
-                <p className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {errorMessage}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
-              >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
-                    Styling in progress…
+            </form>
+            {results.length > 0 ? (
+              <section className="rounded-[2rem] border border-white/10 bg-slate-950/65 p-6 ring-1 ring-white/10 lg:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+                      Makeover gallery
+                    </p>
+                    <h2 className="text-2xl font-semibold text-slate-100">
+                      Recent variations
+                    </h2>
+                    <p className="text-sm text-slate-400">
+                      Every prompt is saved so you can compare results or reuse them when shopping.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs text-slate-300">
+                    {results.length} saved
                   </span>
-                ) : (
-                  "Generate makeover"
-                )}
-              </button>
-            </div>
-          </form>
-        {(results.length > 0 || keywordImageUrl) && (
-          <section className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="space-y-5">
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-100">
-                  Recent makeovers
-                </h2>
-                <p className="text-sm text-slate-400">
-                  Each preview is generated from the prompt you provided above.
-                </p>
-              </div>
-
-              {results.length > 0 ? (
-                <div className="grid gap-6 md:grid-cols-2">
+                </div>
+                <div className="mt-6 grid gap-6 sm:grid-cols-2">
                   {results.map((result) => (
                     <article
                       key={result.createdAt}
-                      className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4"
+                      className="space-y-3 rounded-3xl border border-white/10 bg-black/30 p-4 shadow-[0_25px_60px_-50px_rgba(15,23,42,1)]"
                     >
                       <img
                         src={result.url}
@@ -1244,9 +1376,7 @@ export default function Home() {
                       />
                       <div className="space-y-2 text-sm text-slate-300">
                         <div className="space-y-1">
-                          <p className="font-medium text-slate-100">
-                            {result.prompt}
-                          </p>
+                          <p className="font-medium text-slate-100">{result.prompt}</p>
                           <p className="text-xs text-slate-500">
                             {new Date(result.createdAt).toLocaleTimeString()}
                           </p>
@@ -1255,320 +1385,282 @@ export default function Home() {
                     </article>
                   ))}
                 </div>
-              ) : (
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-slate-300">
-                  Generate a makeover to populate this gallery.
-                </div>
+              </section>
+            ) : (
+              <section className="rounded-[2rem] border border-dashed border-white/15 bg-slate-950/50 p-6 text-sm text-slate-300 lg:p-8">
+                Generate a makeover to populate this gallery.
+              </section>
+            )}
+          </div>
+          <aside className="space-y-6 rounded-[2rem] border border-white/10 bg-slate-950/65 p-6 ring-1 ring-white/10 lg:sticky lg:top-24 lg:p-8">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+                Shopping console
+              </p>
+              <h2 className="text-xl font-semibold text-slate-100">
+                Turn makeovers into merch tables
+              </h2>
+              <p className="text-sm text-slate-300">
+                Focus on a piece from your photo, crop it, then ask Gemma for shopping-friendly keywords to paste into Google Shopping.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                Image source
+              </label>
+              <select
+                value={keywordTarget === "original" ? "original" : String(keywordTarget)}
+                onChange={handleKeywordTargetChange}
+                disabled={keywordSelectDisabled}
+                className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="original" disabled={!previewUrl}>
+                  {previewUrl
+                    ? `Original upload${imageFile ? ` – ${imageFile.name}` : ""}`
+                    : "Upload a photo to enable the original source"}
+                </option>
+                {results.map((result) => (
+                  <option key={result.createdAt} value={result.createdAt}>
+                    {new Date(result.createdAt).toLocaleTimeString()} · {result.prompt.slice(0, 48)}
+                    {result.prompt.length > 48 ? "…" : ""}
+                  </option>
+                ))}
+              </select>
+              {keywordSourceLabel && (
+                <p className="text-xs text-slate-400">{keywordSourceLabel}</p>
               )}
             </div>
-
-            <aside className="space-y-5 rounded-3xl border border-white/10 bg-white/5 p-5">
+            {keywordImageUrl ? (
               <div className="space-y-3">
-                <span className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-400">
-                  Shopping tab
-                </span>
-                <div className="flex overflow-hidden rounded-xl border border-white/10">
-                  <button
-                    type="button"
-                    className="flex-1 bg-amber-500 px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-950"
-                  >
-                    Shopping keywords
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    className="flex-1 bg-transparent px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500"
-                  >
-                    Coming soon
-                  </button>
-                </div>
-              </div>
-
-              <p className="text-sm text-slate-300">
-                Focus on a piece from your photo, crop it, then ask Gemma for
-                shopping-friendly keywords you can paste into Google Shopping.
-              </p>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Image source
-                </label>
-                <select
-                  value={keywordTarget === "original" ? "original" : String(keywordTarget)}
-                  onChange={handleKeywordTargetChange}
-                  disabled={keywordSelectDisabled}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
+                <div
+                  className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30"
+                  style={{ aspectRatio: keywordAspectRatio }}
                 >
-                  <option value="original" disabled={!previewUrl}>
-                    {previewUrl
-                      ? `Original upload${imageFile ? ` – ${imageFile.name}` : ""}`
-                      : "Upload a photo to enable the original source"}
-                  </option>
-                  {results.map((result) => (
-                    <option key={result.createdAt} value={result.createdAt}>
-                      {new Date(result.createdAt).toLocaleTimeString()} ·{" "}
-                      {result.prompt.slice(0, 48)}
-                      {result.prompt.length > 48 ? "…" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {keywordImageUrl ? (
-                <div className="space-y-3">
+                  <img
+                    src={keywordImageUrl}
+                    alt="Selected for keyword extraction"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    draggable={false}
+                  />
                   <div
-                    className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30"
-                    style={{ aspectRatio: keywordAspectRatio }}
+                    ref={cropOverlayRef}
+                    className="absolute inset-0 cursor-crosshair touch-none"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      beginCropSelection(event);
+                    }}
+                    onPointerMove={updateCropSelection}
+                    onPointerUp={finishCropSelection}
+                    onPointerLeave={finishCropSelection}
+                    onPointerCancel={finishCropSelection}
+                    onContextMenu={(event) => event.preventDefault()}
                   >
-                    <img
-                      src={keywordImageUrl}
-                      alt="Selected for keyword extraction"
-                      className="absolute inset-0 h-full w-full object-cover"
-                      draggable={false}
-                    />
-                    <div
-                      ref={cropOverlayRef}
-                      className="absolute inset-0 cursor-crosshair touch-none"
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        beginCropSelection(event);
-                      }}
-                      onPointerMove={updateCropSelection}
-                      onPointerUp={finishCropSelection}
-                      onPointerLeave={finishCropSelection}
-                      onPointerCancel={finishCropSelection}
-                      onContextMenu={(event) => event.preventDefault()}
-                    >
-                      {cropRect && (
-                        <div
-                          className="absolute rounded-2xl border-2 border-amber-400"
-                          style={{
-                            left: `${cropRect.x * 100}%`,
-                            top: `${cropRect.y * 100}%`,
-                            width: `${cropRect.width * 100}%`,
-                            height: `${cropRect.height * 100}%`,
-                            boxShadow: "0 0 0 9999px rgba(2, 6, 23, 0.65)",
-                          }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-                    <p className="flex-1">
-                      {cropRect
-                        ? "We’ll send only the highlighted region to Gemma for keyword suggestions."
-                        : "Draw a rectangle to focus on part of the photo, or leave blank to analyse the entire image."}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={clearCropSelection}
-                      disabled={!cropRect}
-                      className="rounded-xl border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Clear crop
-                    </button>
+                    {cropRect && (
+                      <div
+                        className="absolute rounded-2xl border-2 border-amber-400/90 shadow-[0_0_0_9999px_rgba(2,6,23,0.65)]"
+                        style={{
+                          left: `${cropRect.x * 100}%`,
+                          top: `${cropRect.y * 100}%`,
+                          width: `${cropRect.width * 100}%`,
+                          height: `${cropRect.height * 100}%`,
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-black/30 p-4 text-sm text-slate-400">
-                  Upload a photo or generate a makeover to enable keyword
-                  extraction.
-                </div>
-              )}
-
-              {keywordsError && (
-                <p className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {keywordsError}
-                </p>
-              )}
-
-              <button
-                type="button"
-                onClick={generateShoppingKeywords}
-                disabled={isKeywordsLoading || !keywordImageUrl}
-                className="flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
-              >
-                {isKeywordsLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
-                    Analysing crop…
-                  </span>
-                ) : (
-                  "Get shopping keywords"
-                )}
-              </button>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Suggested keywords
-                </label>
-                <textarea
-                  value={shoppingKeywords}
-                  onChange={(event) => {
-                    setShoppingKeywords(event.target.value);
-                    setShoppingError(null);
-                    setLastShoppingKeywords(null);
-                  }}
-                  placeholder="Keywords from Gemma will appear here..."
-                  className="min-h-[8rem] w-full rounded-2xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
-                />
-                <p className="text-xs text-slate-400">
-                  Copy and paste these into Google Shopping or tweak them to
-                  refine your search.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  <span>CLIP minimum similarity</span>
-                  <span className="text-[0.7rem] text-slate-300">
-                    {clipThreshold.toFixed(2)}
-                  </span>
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.99}
-                  step={0.01}
-                  value={clipThreshold}
-                  onChange={(event) => setClipThreshold(Number(event.target.value))}
-                  className="w-full accent-amber-500"
-                />
-                <p className="text-xs text-slate-400">
-                  Raise the threshold to hide looser visual matches. Set to 0 to
-                  include items without CLIP scores.
-                </p>
-              </div>
-
-              {shoppingError && (
-                <p className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {shoppingError}
-                </p>
-              )}
-
-              <button
-                type="button"
-                onClick={searchShoppingMatches}
-                disabled={shoppingSearchDisabled}
-                className="flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
-              >
-                {isShoppingLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
-                    Fetching products…
-                  </span>
-                ) : (
-                  "Find shopping matches"
-                )}
-              </button>
-              <p className="text-xs text-slate-500">
-                Searches reuse the latest keywords. Generate or edit the list to
-                run another lookup.
-              </p>
-
-              <button
-                type="button"
-                onClick={recomputeClipScores}
-                disabled={
-                  isClipRanking ||
-                  rawShoppingResults.length === 0 ||
-                  !keywordImageUrl
-                }
-                className="flex items-center justify-center gap-2 rounded-2xl border border-amber-500 px-4 py-3 text-sm font-semibold text-amber-400 transition hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:border-amber-500/50 disabled:text-amber-200"
-              >
-                {isClipRanking ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-                    Recomputing CLIP ranks…
-                  </span>
-                ) : (
-                  "Re-run CLIP ranking"
-                )}
-              </button>
-              <p className="text-xs text-slate-500">
-                Re-rank results locally without another SerpAPI request.
-              </p>
-
-              {(isShoppingLoading || isClipRanking) && (
-                <p className="text-sm text-slate-400">
-                  {isClipRanking
-                    ? "Ranking matches with CLIP…"
-                    : "Fetching shopping results…"}
-                </p>
-              )}
-
-              {filteredShoppingResults.length > 0 ? (
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Shopping matches
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+                  <p className="flex-1">
+                    {cropRect
+                      ? "We’ll send only the highlighted region to Gemma for keyword suggestions."
+                      : "Draw a rectangle to focus on part of the photo, or leave blank to analyse the entire image."}
                   </p>
-                  <div className="grid gap-4">
-                    {filteredShoppingResults.map((item, index) => (
-                      <article
-                        key={`${item.link}-${index}`}
-                        className="flex gap-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-200"
-                      >
-                        {item.thumbnail ? (
-                          <img
-                            src={item.thumbnail}
-                            alt={item.title}
-                            className="h-20 w-20 flex-shrink-0 rounded-xl border border-white/10 object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-xl border border-dashed border-white/10 text-xs text-slate-500">
-                            No image
-                          </div>
-                        )}
-                        <div className="flex min-w-0 flex-1 flex-col gap-1">
-                          <a
-                            href={item.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="truncate text-sm font-semibold text-amber-300 hover:underline"
-                          >
-                            {item.title}
-                          </a>
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                            {item.price ? (
-                              <span className="rounded-md border border-white/10 px-2 py-1 text-slate-100">
-                                {item.price}
-                              </span>
-                            ) : item.extractedPrice ? (
-                              <span className="rounded-md border border-white/10 px-2 py-1 text-slate-100">
-                                ${item.extractedPrice.toFixed(2)}
-                              </span>
-                            ) : null}
-                            {item.source && (
-                              <span className="rounded-md border border-white/10 px-2 py-1">
-                                {item.source}
-                              </span>
-                            )}
-                            {item.shipping && (
-                              <span className="rounded-md border border-white/10 px-2 py-1">
-                                {item.shipping}
-                              </span>
-                            )}
-                          </div>
-                          {typeof item.clipScore === "number" && (
-                            <p className="text-xs text-amber-400">
-                              CLIP similarity: {item.clipScore.toFixed(3)}
-                            </p>
+                  <button
+                    type="button"
+                    onClick={clearCropSelection}
+                    disabled={!cropRect}
+                    className="rounded-xl border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Clear crop
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-black/30 p-4 text-sm text-slate-400">
+                Upload a photo or generate a makeover to enable keyword extraction.
+              </div>
+            )}
+            {keywordsError && (
+              <p className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {keywordsError}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={generateShoppingKeywords}
+              disabled={isKeywordsLoading || !keywordImageUrl}
+              className="flex items-center justify-center gap-2 rounded-full bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
+            >
+              {isKeywordsLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
+                  Analysing crop…
+                </span>
+              ) : (
+                "Get shopping keywords"
+              )}
+            </button>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                Suggested keywords
+              </label>
+              <textarea
+                value={shoppingKeywords}
+                onChange={(event) => {
+                  setShoppingKeywords(event.target.value);
+                  setShoppingError(null);
+                  setLastShoppingKeywords(null);
+                }}
+                placeholder="Keywords from Gemma will appear here..."
+                className="min-h-[8rem] w-full rounded-2xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+              />
+              <p className="text-xs text-slate-400">
+                Copy and paste these into Google Shopping or tweak them to refine your search.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                <span>CLIP minimum similarity</span>
+                <span className="text-[0.7rem] text-slate-300">{clipThreshold.toFixed(2)}</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={0.99}
+                step={0.01}
+                value={clipThreshold}
+                onChange={(event) => setClipThreshold(Number(event.target.value))}
+                className="w-full accent-amber-500"
+              />
+              <p className="text-xs text-slate-400">
+                Raise the threshold to hide looser visual matches. Set to 0 to include items without CLIP scores.
+              </p>
+            </div>
+            {shoppingError && (
+              <p className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {shoppingError}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={searchShoppingMatches}
+              disabled={shoppingSearchDisabled}
+              className="flex items-center justify-center gap-2 rounded-full bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
+            >
+              {isShoppingLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
+                  Fetching products…
+                </span>
+              ) : (
+                "Find shopping matches"
+              )}
+            </button>
+            <p className="text-xs text-slate-500">
+              Searches reuse the latest keywords. Generate or edit the list to run another lookup.
+            </p>
+            <button
+              type="button"
+              onClick={recomputeClipScores}
+              disabled={isClipRanking || rawShoppingResults.length === 0 || !keywordImageUrl}
+              className="flex items-center justify-center gap-2 rounded-full border border-amber-500 px-4 py-3 text-sm font-semibold text-amber-400 transition hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:border-amber-500/50 disabled:text-amber-200"
+            >
+              {isClipRanking ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                  Recomputing CLIP ranks…
+                </span>
+              ) : (
+                "Re-run CLIP ranking"
+              )}
+            </button>
+            <p className="text-xs text-slate-500">
+              Re-rank results locally without another SerpAPI request.
+            </p>
+            {(isShoppingLoading || isClipRanking) && (
+              <p className="text-sm text-slate-400">
+                {isClipRanking ? "Ranking matches with CLIP…" : "Fetching shopping results…"}
+              </p>
+            )}
+            {filteredShoppingResults.length > 0 ? (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                  Shopping matches
+                </p>
+                <div className="grid gap-4">
+                  {filteredShoppingResults.map((item, index) => (
+                    <article
+                      key={`${item.link}-${index}`}
+                      className="flex gap-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-200"
+                    >
+                      {item.thumbnail ? (
+                        <img
+                          src={item.thumbnail}
+                          alt={item.title}
+                          className="h-20 w-20 flex-shrink-0 rounded-xl border border-white/10 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-xl border border-dashed border-white/10 text-xs text-slate-500">
+                          No image
+                        </div>
+                      )}
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate text-sm font-semibold text-amber-300 hover:underline"
+                        >
+                          {item.title}
+                        </a>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                          {item.price ? (
+                            <span className="rounded-md border border-white/10 px-2 py-1 text-slate-100">
+                              {item.price}
+                            </span>
+                          ) : item.extractedPrice ? (
+                            <span className="rounded-md border border-white/10 px-2 py-1 text-slate-100">
+                              ${item.extractedPrice.toFixed(2)}
+                            </span>
+                          ) : null}
+                          {item.source && (
+                            <span className="rounded-md border border-white/10 px-2 py-1">
+                              {item.source}
+                            </span>
+                          )}
+                          {item.shipping && (
+                            <span className="rounded-md border border-white/10 px-2 py-1">
+                              {item.shipping}
+                            </span>
                           )}
                         </div>
-                      </article>
-                    ))}
-                  </div>
+                        {typeof item.clipScore === "number" && (
+                          <p className="text-xs text-amber-400">
+                            CLIP similarity: {item.clipScore.toFixed(3)}
+                          </p>
+                        )}
+                      </div>
+                    </article>
+                  ))}
                 </div>
-              ) : shoppingResults.length > 0 ? (
-                <p className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-400">
-                  No matches meet the current CLIP threshold. Lower the slider or
-                  re-run ranking to compare again.
-                </p>
-              ) : null}
-            </aside>
-          </section>
-        )}
-      </div>
+              </div>
+            ) : shoppingResults.length > 0 ? (
+              <p className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-400">
+                No matches meet the current CLIP threshold. Lower the slider or re-run ranking to compare again.
+              </p>
+            ) : null}
+          </aside>
+        </section>
+      </main>
     </div>
   );
 }

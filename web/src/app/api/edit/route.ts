@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
+import { put } from "@vercel/blob";
 
 import type { OpenRouterChatCompletionsResponse } from "./types";
 
@@ -11,6 +13,37 @@ export const config = {
   api: {
     bodyParser: false,
   },
+};
+
+const blobToken =
+  process.env.BLOB_READ_WRITE_TOKEN?.trim() ??
+  process.env.VERCEL_BLOB_WRITE_TOKEN?.trim() ??
+  process.env.VERCEL_BLOB_READ_WRITE_TOKEN?.trim() ??
+  process.env.BLOB_WRITE_TOKEN?.trim() ??
+  null;
+
+const blobBaseUrl = process.env.BLOB_BASE_URL?.replace(/\/+$/, "") ?? null;
+const blobStoreId = process.env.BLOB_STORE_ID?.trim() ?? null;
+const blobFolderPrefix =
+  process.env.BLOB_FOLDER_PREFIX?.replace(/^\/+|\/+$/g, "") ??
+  "gemini-makeovers";
+
+const blobUploadsEnabled = Boolean(blobToken);
+
+type BlobSummary = {
+  pathname: string;
+  url: string;
+  downloadUrl: string | null;
+  contentType: string | null;
+};
+
+type BlobDocumentation = {
+  sessionPath: string;
+  input?: BlobSummary | null;
+  mask?: BlobSummary | null;
+  output?: BlobSummary | null;
+  metadata?: BlobSummary | null;
+  details?: Record<string, unknown>;
 };
 
 export async function POST(request: Request) {
@@ -223,8 +256,48 @@ export async function POST(request: Request) {
       finalBuffer = await sharp(generatedImage).png().toBuffer();
     }
 
+    const metadataDetails = {
+      createdAt: new Date().toISOString(),
+      prompt: prompt.trim(),
+      negativePrompt:
+        typeof negativePrompt === "string" && negativePrompt.trim()
+          ? negativePrompt.trim()
+          : null,
+      guidanceScale,
+      guidanceScaleInput:
+        typeof guidanceScaleInput === "string" ? guidanceScaleInput : null,
+      strength,
+      strengthInput:
+        typeof strengthInput === "string" ? strengthInput : null,
+      inferenceSteps,
+      inferenceStepsInput:
+        typeof inferenceStepsInput === "string" ? inferenceStepsInput : null,
+      seed: typeof seed === "number" ? seed : null,
+      seedInput: typeof seedInput === "string" ? seedInput : null,
+      temperature,
+      modelId,
+      apiBaseUrl,
+      maskProvided: Boolean(maskBuffer),
+      originalFilename:
+        typeof image.name === "string" && image.name ? image.name : null,
+      maskFilename:
+        mask instanceof File && typeof mask.name === "string" && mask.name
+          ? mask.name
+          : null,
+    };
+
+    const blobDocumentation = await documentImagesToBlob({
+      input: { buffer: imageBuffer, contentType },
+      mask: maskBuffer
+        ? { buffer: maskBuffer, contentType: "image/png" }
+        : undefined,
+      output: { buffer: finalBuffer, contentType: "image/png" },
+      metadata: metadataDetails,
+    });
+
     return NextResponse.json({
       image: `data:image/png;base64,${finalBuffer.toString("base64")}`,
+      blobs: blobDocumentation,
     });
   } catch (error) {
     console.error(error);
@@ -360,4 +433,151 @@ function clampNumber(value: number, min: number, max: number): number {
 function clampInteger(value: number, min: number, max: number): number {
   const rounded = Math.round(value);
   return Math.min(Math.max(rounded, min), max);
+}
+
+async function documentImagesToBlob({
+  input,
+  mask,
+  output,
+  metadata,
+}: {
+  input: { buffer: Buffer; contentType: string };
+  mask?: { buffer: Buffer; contentType: string };
+  output: { buffer: Buffer; contentType: string };
+  metadata?: Record<string, unknown>;
+}): Promise<BlobDocumentation | null> {
+  if (!blobUploadsEnabled) {
+    return null;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const sessionId = randomUUID();
+  const segments = [blobFolderPrefix];
+  if (blobStoreId) {
+    segments.push(blobStoreId);
+  }
+  segments.push(`${timestamp}-${sessionId}`);
+  const sessionPath = segments.filter(Boolean).join("/");
+
+  const uploads: Array<Promise<void>> = [];
+
+  const documentation: BlobDocumentation = {
+    sessionPath,
+  };
+
+  const enrichedMetadata =
+    metadata !== undefined
+      ? {
+          ...metadata,
+          sessionPath,
+          sessionId,
+          timestamp,
+        }
+      : undefined;
+
+  if (enrichedMetadata) {
+    documentation.details = enrichedMetadata;
+  }
+
+  uploads.push(
+    uploadToBlob(
+      `${sessionPath}/input${extensionFromContentType(input.contentType)}`,
+      input.buffer,
+      input.contentType,
+    ).then((result) => {
+      documentation.input = result;
+    }),
+  );
+
+  if (mask) {
+    uploads.push(
+      uploadToBlob(
+        `${sessionPath}/mask${extensionFromContentType(mask.contentType)}`,
+        mask.buffer,
+        mask.contentType,
+      ).then((result) => {
+        documentation.mask = result;
+      }),
+    );
+  }
+
+  uploads.push(
+    uploadToBlob(
+      `${sessionPath}/output${extensionFromContentType(output.contentType)}`,
+      output.buffer,
+      output.contentType,
+    ).then((result) => {
+      documentation.output = result;
+    }),
+  );
+
+  if (enrichedMetadata) {
+    const metadataBuffer = Buffer.from(
+      JSON.stringify(enrichedMetadata, null, 2),
+    );
+    uploads.push(
+      uploadToBlob(
+        `${sessionPath}/metadata.json`,
+        metadataBuffer,
+        "application/json",
+      ).then((result) => {
+        documentation.metadata = result;
+      }),
+    );
+  }
+
+  await Promise.all(uploads);
+
+  return documentation;
+}
+
+async function uploadToBlob(
+  pathname: string,
+  data: Buffer,
+  contentType: string,
+): Promise<BlobSummary | null> {
+  try {
+    const result = await put(pathname, data, {
+      access: "public",
+      contentType,
+      addRandomSuffix: false,
+      allowOverwrite: false,
+      token: blobToken ?? undefined,
+    });
+
+    const finalUrl = blobBaseUrl
+      ? `${blobBaseUrl}/${result.pathname}`
+      : result.url;
+    const finalDownloadUrl = blobBaseUrl
+      ? `${blobBaseUrl}/${result.pathname}`
+      : result.downloadUrl;
+
+    return {
+      pathname: result.pathname,
+      url: finalUrl,
+      downloadUrl: finalDownloadUrl ?? null,
+      contentType: result.contentType ?? null,
+    };
+  } catch (error) {
+    console.error(`Failed to upload ${pathname} to Vercel Blob.`, error);
+    return null;
+  }
+}
+
+function extensionFromContentType(
+  contentType: string | null | undefined,
+): string {
+  if (!contentType) return ".png";
+  const normalized = contentType.toLowerCase();
+  if (normalized.includes("jpeg")) return ".jpg";
+  if (normalized.includes("png")) return ".png";
+  if (normalized.includes("webp")) return ".webp";
+  if (normalized.includes("gif")) return ".gif";
+  if (normalized.includes("bmp")) return ".bmp";
+  if (normalized.includes("tiff")) return ".tif";
+  const match = normalized.match(/\/([a-z0-9.+-]+)/);
+  if (match) {
+    return `.${match[1]}`;
+  }
+  return ".png";
 }
