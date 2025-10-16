@@ -1,98 +1,54 @@
 export function HeroSection() {
   return (
-    <section className="overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-slate-900/95 via-slate-900/60 to-slate-900/20 p-10 shadow-[0_48px_140px_-72px_rgba(15,23,42,1)] ring-1 ring-white/10">
-      <div className="grid gap-12 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)] lg:items-center">
+    <section className="rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900/90 to-slate-900/50 px-8 py-12 shadow-[0_42px_160px_-90px_rgba(15,23,42,1)] ring-1 ring-white/10">
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:items-center">
         <div className="space-y-6">
-          <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/50 bg-amber-400/15 px-4 py-1 text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
-            Interior AI
+          <p className="w-fit rounded-full border border-white/15 bg-white/5 px-4 py-1 text-xs font-semibold uppercase tracking-[0.5em] text-amber-200">
+            Interior makeover studio
           </p>
-          <h1 className="text-4xl font-semibold leading-tight md:text-5xl">
-            Stage edited interiors, faster than moodboards or mockups.
+          <h1 className="text-4xl font-semibold leading-tight text-slate-50 md:text-5xl">
+            A clearer, room-scale canvas for designing the makeover in your head.
           </h1>
           <p className="max-w-2xl text-base text-slate-300 md:text-lg">
-            Upload a reference photo, paint the areas you want to transform, and generate layered makeovers you can compare, crop, and shop.
+            Drop in your space, paint where you want change, and watch Gemma render intent-matched edits.
+            The workspace now maximises the preview so you can inspect lighting, materials, and fit at a glance.
           </p>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                Step 1
-              </p>
-              <p className="mt-2 text-sm font-medium text-slate-100">
-                Upload & mark focus
-              </p>
+          <div className="flex flex-wrap gap-3 text-xs text-slate-200">
+            <span className="rounded-full border border-white/20 px-3 py-1 uppercase tracking-[0.35em]">
+              Large format canvas
+            </span>
+            <span className="rounded-full border border-white/20 px-3 py-1 uppercase tracking-[0.35em]">
+              Inline mask painter
+            </span>
+            <span className="rounded-full border border-white/20 px-3 py-1 uppercase tracking-[0.35em]">
+              Smart redo loops
+            </span>
+          </div>
+        </div>
+        <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 text-sm text-slate-200 shadow-inner shadow-black/60">
+          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-amber-200">
+            How to work fast
+          </p>
+          <div className="mt-4 space-y-4">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-sm font-semibold text-slate-100">1. Upload & mask</p>
               <p className="mt-2 text-xs text-slate-400">
-                Import the photo of your space and paint the furniture or walls you’d like Gemma to restyle.
+                Paint white over areas to transform—walls, furniture, décor. They update live as you draw.
               </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                Step 2
-              </p>
-              <p className="mt-2 text-sm font-medium text-slate-100">
-                Describe the vibe
-              </p>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-sm font-semibold text-slate-100">2. Prompt the vibe</p>
               <p className="mt-2 text-xs text-slate-400">
-                Prompt with materials, palette, and mood—Gemma renders polished makeovers in seconds.
+                Describe the mood, palette, and materials. Templates on the right jump-start ideas.
               </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                Step 3
-              </p>
-              <p className="mt-2 text-sm font-medium text-slate-100">
-                Shop the look
-              </p>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-sm font-semibold text-slate-100">3. Compare & shop</p>
               <p className="mt-2 text-xs text-slate-400">
-                Generate keywords, filter CLIP matches, and jump straight to purchase-ready products.
+                Variations stack below the canvas with a comparison slider. Crop any result to source matching products.
               </p>
             </div>
           </div>
-        </div>
-        <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6 text-sm text-slate-300 shadow-inner shadow-black/50">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
-            Workflow cheatsheet
-          </p>
-          <ol className="mt-5 space-y-4">
-            <li className="flex gap-3">
-              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
-                1
-              </span>
-              <div>
-                <p className="font-medium text-slate-100">
-                  Mask precisely with the brush or eraser
-                </p>
-                <p className="text-xs text-slate-400">
-                  Hold and drag to paint. Switch modes to erase any overpainting and reset when needed.
-                </p>
-              </div>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
-                2
-              </span>
-              <div>
-                <p className="font-medium text-slate-100">
-                  Capture multiple variations
-                </p>
-                <p className="text-xs text-slate-400">
-                  Every makeover you generate is saved below so you can compare prompts or reuse them for shopping.
-                </p>
-              </div>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
-                3
-              </span>
-              <div>
-                <p className="font-medium text-slate-100">
-                  Crop before keywording
-                </p>
-                <p className="text-xs text-slate-400">
-                  Highlight the hero object, then let Gemma return a merchandisable keyword list and CLIP-ranked matches.
-                </p>
-              </div>
-            </li>
-          </ol>
         </div>
       </div>
     </section>

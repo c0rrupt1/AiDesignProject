@@ -266,11 +266,6 @@ export default function Home() {
   }, [keywordTarget, results, previewUrl]);
 
 
-  const previewLabel = useMemo(() => {
-    if (!imageFile) return "Upload a base photo";
-    return imageFile.name;
-  }, [imageFile]);
-
   const keywordImageUrl = useMemo(() => {
     if (keywordTarget === "original") {
       return previewUrl ?? null;
@@ -782,10 +777,10 @@ export default function Home() {
   };
 
   const maskModeButtonClass = (mode: "paint" | "erase") =>
-    `px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] transition ${
+    `px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.25em] transition ${
       drawMode === mode
-        ? "bg-amber-500 text-slate-950"
-        : "bg-white/5 text-slate-300 hover:bg-white/10"
+        ? "bg-amber-400 text-slate-950"
+        : "bg-transparent text-slate-300 hover:bg-white/10"
     }`;
 
   const toggleSmartRedo = (resultId: number) => {
@@ -1370,17 +1365,17 @@ export default function Home() {
               className="space-y-8 rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_55px_160px_-90px_rgba(15,23,42,1)] ring-1 ring-white/10 lg:p-8"
             >
               <div className="space-y-8">
-                <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6 lg:p-7">
+                <div className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 lg:p-8">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
-                        Step 1 — Reference photo
+                      <p className="text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
+                        Canvas
                       </p>
                       <h2 className="text-2xl font-semibold text-slate-100">
-                        Upload & outline your space
+                        Upload, mask, and preview at full scale
                       </h2>
-                      <p className="text-sm text-slate-300">
-                        Start with a clear shot of the room. Paint the furniture or architectural details to tell the model what to restyle.
+                      <p className="text-sm text-slate-400">
+                        Paint focus areas and drop in optional reference objects. The preview now spans the card so you can judge scale and lighting.
                       </p>
                     </div>
                     {imageFile && (
@@ -1389,8 +1384,12 @@ export default function Home() {
                       </span>
                     )}
                   </div>
-                  <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)]">
-                    <label className="flex h-52 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-amber-400/60 bg-black/20 text-center text-sm transition hover:bg-black/10">
+                  <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.45fr)_minmax(0,1fr)] xl:items-start">
+                    <label
+                      className={`flex h-full min-h-[280px] cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-amber-400/60 bg-black/20 p-6 text-center text-sm transition ${
+                        previewUrl ? "hover:bg-black/10" : "hover:bg-black/15"
+                      }`}
+                    >
                       <input
                         type="file"
                         name="image"
@@ -1398,88 +1397,85 @@ export default function Home() {
                         onChange={onBaseImageChange}
                         className="hidden"
                       />
-                      <span className="text-xs font-semibold uppercase tracking-[0.4em] text-amber-300">
-                        Base photo
+                      <span className="text-xs font-semibold uppercase tracking-[0.4em] text-amber-200">
+                        Room photo
                       </span>
-                      <span className="max-w-[14rem] text-sm font-medium text-slate-200">
-                        {previewLabel}
+                      <span className="text-sm font-medium text-slate-100">
+                        {imageFile ? "Replace current photo" : "Upload room photo"}
                       </span>
-                      <span className="text-xs text-slate-400">PNG or JPG up to 8&nbsp;MB</span>
+                      <span className="max-w-[16rem] text-xs text-slate-400">
+                        {imageFile ? imageFile.name : "PNG or JPG up to 12MB"}
+                      </span>
                     </label>
                     {previewUrl ? (
-                      <div className="space-y-4 rounded-2xl border border-white/10 bg-black/40 p-4">
-                        <div className="space-y-3">
-                          <figcaption className="text-sm font-medium text-slate-200">
-                            Mask painter
-                          </figcaption>
-                          <div
-                            ref={maskStageRef}
-                            className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30"
-                            style={{
-                              aspectRatio: imageDimensions
-                                ? `${imageDimensions.width} / ${imageDimensions.height}`
-                                : "4 / 3",
+                      <div className="space-y-4">
+                        <div
+                          ref={maskStageRef}
+                          className="relative w-full overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900 shadow-[0_40px_120px_-70px_rgba(15,23,42,1)]"
+                          style={{
+                            aspectRatio: imageDimensions
+                              ? `${imageDimensions.width} / ${imageDimensions.height}`
+                              : "3 / 2",
+                          }}
+                        >
+                          <img
+                            src={previewUrl}
+                            alt="Base preview"
+                            className="absolute inset-0 h-full w-full object-cover"
+                            draggable={false}
+                          />
+                          <canvas
+                            ref={maskCanvasRef}
+                            className="absolute inset-0 h-full w-full cursor-crosshair opacity-70 mix-blend-screen touch-none"
+                            style={{ width: "100%", height: "100%" }}
+                            onPointerDown={(event) => {
+                              event.preventDefault();
+                              handlePointerDown(event);
                             }}
-                          >
-                            <img
-                              src={previewUrl}
-                              alt="Base preview"
-                              className="absolute inset-0 h-full w-full object-cover"
-                              draggable={false}
-                            />
-                            <canvas
-                              ref={maskCanvasRef}
-                              className="absolute inset-0 h-full w-full cursor-crosshair opacity-70 mix-blend-screen touch-none"
-                              style={{ width: "100%", height: "100%" }}
-                              onPointerDown={(event) => {
-                                event.preventDefault();
-                                handlePointerDown(event);
-                              }}
-                              onPointerMove={handlePointerMove}
-                              onPointerUp={stopDrawing}
-                              onPointerLeave={() => stopDrawing()}
-                              onPointerCancel={stopDrawing}
-                              onContextMenu={(event) => event.preventDefault()}
-                            />
-                            {insertRect && insertPreviewUrl && (
-                              <div className="pointer-events-none absolute inset-0">
-                                <div
-                                  className="absolute pointer-events-auto select-none rounded-xl border border-amber-200/80 bg-amber-300/10 shadow-[0_0_0_9999px_rgba(2,6,23,0.3)] backdrop-blur-[1px]"
-                                  style={{
-                                    left: `${insertRect.x * 100}%`,
-                                    top: `${insertRect.y * 100}%`,
-                                    width: `${insertRect.width * 100}%`,
-                                    height: `${insertRect.height * 100}%`,
-                                  }}
-                                  onPointerDown={beginInsertDrag}
-                                  onPointerMove={updateInsertDrag}
-                                  onPointerUp={finishInsertDrag}
-                                  onPointerLeave={finishInsertDrag}
-                                  onPointerCancel={finishInsertDrag}
-                                  >
-                                    <img
-                                      src={insertPreviewUrl}
-                                      alt="Reference object placement"
-                                      className="h-full w-full rounded-[0.65rem] object-cover"
-                                      draggable={false}
-                                    />
-                                    <div className="pointer-events-none absolute inset-1 rounded-[0.55rem] border border-amber-300/40" />
-                                  {!isDraggingInsert && (
-                                    <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-amber-400/90 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-950 shadow-lg">
-                                      Drag to position
-                                    </div>
-                                  )}
-                                </div>
+                            onPointerMove={handlePointerMove}
+                            onPointerUp={stopDrawing}
+                            onPointerLeave={() => stopDrawing()}
+                            onPointerCancel={stopDrawing}
+                            onContextMenu={(event) => event.preventDefault()}
+                          />
+                          {insertRect && insertPreviewUrl && (
+                            <div className="pointer-events-none absolute inset-0">
+                              <div
+                                className="absolute pointer-events-auto select-none rounded-xl border border-amber-200/80 bg-amber-300/10 shadow-[0_0_0_9999px_rgba(2,6,23,0.3)] backdrop-blur-[1px]"
+                                style={{
+                                  left: `${insertRect.x * 100}%`,
+                                  top: `${insertRect.y * 100}%`,
+                                  width: `${insertRect.width * 100}%`,
+                                  height: `${insertRect.height * 100}%`,
+                                }}
+                                onPointerDown={beginInsertDrag}
+                                onPointerMove={updateInsertDrag}
+                                onPointerUp={finishInsertDrag}
+                                onPointerLeave={finishInsertDrag}
+                                onPointerCancel={finishInsertDrag}
+                              >
+                                <img
+                                  src={insertPreviewUrl}
+                                  alt="Reference object placement"
+                                  className="h-full w-full rounded-[0.65rem] object-cover"
+                                  draggable={false}
+                                />
+                                <div className="pointer-events-none absolute inset-1 rounded-[0.55rem] border border-amber-300/40" />
+                                {!isDraggingInsert && (
+                                  <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-amber-400/90 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-950 shadow-lg">
+                                    Drag to position
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-slate-300">
                           <div className="flex items-center gap-2">
                             <span className="text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
                               Mode
                             </span>
-                            <div className="flex overflow-hidden rounded-xl border border-white/10">
+                            <div className="flex overflow-hidden rounded-xl border border-white/10 bg-white/5">
                               <button
                                 type="button"
                                 onClick={() => setDrawMode("paint")}
@@ -1513,22 +1509,22 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={clearMask}
-                            className="rounded-xl border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:bg-white/10"
+                            className="rounded-xl border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-slate-200 transition hover:bg-white/10"
                           >
                             Clear mask
                           </button>
                         </div>
                         <p className="text-[0.7rem] text-slate-400">
-                          Paint white over the furniture or walls you want the AI to transform. Areas left black will remain untouched.
+                          Paint white over furniture or architectural elements to transform them. Anything left black remains untouched.
                         </p>
                         <div className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 text-xs text-slate-300">
                           <div className="flex items-start justify-between gap-3">
                             <div className="space-y-1">
                               <p className="text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-amber-200">
-                                Optional — Reference object
+                                Optional reference object
                               </p>
                               <p className="text-slate-400">
-                                Drop an inspiration photo (like a tree or accent chair) and drag it into place. We’ll cue the model to anchor it there.
+                                Drop an inspiration piece and drag it into place. We’ll cue the model to anchor it inside the highlighted box.
                               </p>
                             </div>
                             {insertImageFile && (
@@ -1546,7 +1542,7 @@ export default function Home() {
                               <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                                 <p className="font-medium text-slate-100">{insertImageFile.name}</p>
                                 <p className="mt-1 text-slate-400">
-                                  Drag the overlay on the photo to reposition. Resize with the slider to fine-tune scale.
+                                  Drag the overlay on the photo to reposition it, then resize with the slider to fine-tune scale.
                                 </p>
                               </div>
                               <div className="space-y-2">
@@ -1584,7 +1580,7 @@ export default function Home() {
                               </span>
                               <span className="text-slate-200">
                                 {previewUrl
-                                  ? "PNG or JPG up to 4 MB works best."
+                                  ? "Upload a PNG or JPG under 8MB."
                                   : "Upload your room photo first to place an object."}
                               </span>
                             </label>
@@ -1592,22 +1588,22 @@ export default function Home() {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex min-h-[13rem] items-center justify-center rounded-2xl border border-dashed border-white/15 bg-black/20 p-4 text-sm text-slate-400">
+                      <div className="flex min-h-[420px] items-center justify-center rounded-[1.75rem] border border-dashed border-white/15 bg-black/20 p-4 text-sm text-slate-400">
                         Upload a photo to unlock the in-browser mask painter.
                       </div>
                     )}
                   </div>
                 </div>
-                <div className="rounded-3xl border border-white/10 bg-slate-950/55 p-6 lg:p-7">
+                <div className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 lg:p-8">
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
-                      Step 2 — Style prompt
+                    <p className="text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
+                      Style brief
                     </p>
                     <h2 className="text-2xl font-semibold text-slate-100">
                       Describe the makeover direction
                     </h2>
-                    <p className="text-sm text-slate-300">
-                      Spell out the mood, palette, or materials you want. Gemma follows descriptive instructions best.
+                    <p className="text-sm text-slate-400">
+                      Spell out the mood, palette, and materials you want. Templates on the right drop in curated prompts you can riff on.
                     </p>
                   </div>
                   <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
@@ -1616,20 +1612,20 @@ export default function Home() {
                       placeholder="Describe the atmosphere, materials, palette, or mood you’d like to see."
                       value={prompt}
                       onChange={(event) => setPrompt(event.target.value)}
-                      className="min-h-[12rem] w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+                      className="min-h-[14rem] w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
                     />
                     <div className="space-y-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
                       <div className="space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
                           Templates
                         </p>
-                        <div className="space-y-2">
+                        <div className="grid gap-2">
                           {promptTemplates.map((template) => (
                             <button
                               key={template.id}
                               type="button"
                               onClick={() => applyTemplate(template)}
-                              className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-left transition hover:border-amber-400/80 hover:bg-amber-400/10"
+                              className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-amber-400/80 hover:bg-amber-400/10"
                             >
                               <p className="text-sm font-semibold text-slate-100">
                                 {template.title}
@@ -1661,17 +1657,17 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
-                <div className="rounded-3xl border border-white/10 bg-slate-950/55 p-6 lg:p-7">
+                <div className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 lg:p-8">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
-                        Step 3 — Fine-tune
+                      <p className="text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
+                        Fine-tune
                       </p>
                       <h2 className="text-2xl font-semibold text-slate-100">
                         Advanced controls
                       </h2>
-                      <p className="text-sm text-slate-300">
-                        Adjust how dramatically the makeover diverges from the original and how closely it follows your prompt.
+                      <p className="text-sm text-slate-400">
+                        Adjust prompt strength, blend amount, and inference steps. Dial it in when you need more control.
                       </p>
                     </div>
                     <button
@@ -1679,7 +1675,7 @@ export default function Home() {
                       onClick={() => setShowAdvanced((prev) => !prev)}
                       className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-slate-100 transition hover:bg-white/15"
                     >
-                      {showAdvanced ? "Hide controls" : "Show controls"}
+                      {showAdvanced ? "Hide" : "Show"}
                     </button>
                   </div>
                   {showAdvanced && (
@@ -1803,24 +1799,24 @@ export default function Home() {
               </div>
             </form>
             {results.length > 0 ? (
-              <section className="rounded-[2rem] border border-white/10 bg-slate-950/65 p-6 ring-1 ring-white/10 lg:p-8">
+              <section className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 ring-1 ring-white/10 lg:p-8">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+                    <p className="text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
                       Makeover gallery
                     </p>
                     <h2 className="text-2xl font-semibold text-slate-100">
                       Recent variations
                     </h2>
                     <p className="text-sm text-slate-400">
-                      Every prompt is saved so you can compare results or reuse them when shopping.
+                      Compare each render with a draggable split view, reuse it as a new base, or loop in Smart Redo feedback.
                     </p>
                   </div>
                   <span className="rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs text-slate-300">
                     {results.length} saved
                   </span>
                 </div>
-                <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {results.map((result) => {
                     const sliderPosition = comparisonPositions[result.createdAt] ?? 50;
                     const baseImage = result.sourceImage || previewUrl || result.url;
@@ -1829,10 +1825,10 @@ export default function Home() {
                     return (
                       <article
                         key={result.createdAt}
-                        className="space-y-4 rounded-3xl border border-white/10 bg-black/30 p-4 shadow-[0_25px_60px_-50px_rgba(15,23,42,1)]"
+                        className="flex h-full flex-col gap-4 rounded-3xl border border-white/10 bg-black/25 p-4 shadow-[0_30px_80px_-60px_rgba(15,23,42,1)]"
                       >
                         <div className="space-y-3">
-                          <div className="relative aspect-square w-full overflow-hidden rounded-2xl border border-black/30">
+                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-white/10">
                             <img
                               src={baseImage}
                               alt="Original reference"
@@ -1969,16 +1965,16 @@ export default function Home() {
               </section>
             )}
           </div>
-          <aside className="space-y-6 rounded-[2rem] border border-white/10 bg-slate-950/65 p-6 ring-1 ring-white/10 lg:sticky lg:top-24 lg:p-8">
+          <aside className="space-y-6 rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 ring-1 ring-white/10 lg:sticky lg:top-24 lg:p-8">
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+              <p className="text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
                 Shopping console
               </p>
               <h2 className="text-xl font-semibold text-slate-100">
                 Turn makeovers into merch tables
               </h2>
               <p className="text-sm text-slate-300">
-                Focus on a piece from your photo, crop it, then ask Gemma for shopping-friendly keywords to paste into Google Shopping.
+                Focus on a hero object, crop it, then ask Gemma for shopping-friendly keywords to paste into Google Shopping.
               </p>
             </div>
             <div className="space-y-2">
@@ -2127,41 +2123,40 @@ export default function Home() {
                 {shoppingError}
               </p>
             )}
-            <button
-              type="button"
-              onClick={searchShoppingMatches}
-              disabled={shoppingSearchDisabled}
-              className="flex items-center justify-center gap-2 rounded-full bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
-            >
-              {isShoppingLoading ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
-                  Fetching products…
-                </span>
-              ) : (
-                "Find shopping matches"
-              )}
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={searchShoppingMatches}
+                disabled={shoppingSearchDisabled}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
+              >
+                {isShoppingLoading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
+                    Fetching products…
+                  </span>
+                ) : (
+                  "Find shopping matches"
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={recomputeClipScores}
+                disabled={isClipRanking || rawShoppingResults.length === 0 || !keywordImageUrl}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full border border-amber-500 px-4 py-3 text-sm font-semibold text-amber-400 transition hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:border-amber-500/50 disabled:text-amber-200"
+              >
+                {isClipRanking ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                    Recomputing CLIP ranks…
+                  </span>
+                ) : (
+                  "Re-run CLIP ranking"
+                )}
+              </button>
+            </div>
             <p className="text-xs text-slate-500">
-              Searches reuse the latest keywords. Generate or edit the list to run another lookup.
-            </p>
-            <button
-              type="button"
-              onClick={recomputeClipScores}
-              disabled={isClipRanking || rawShoppingResults.length === 0 || !keywordImageUrl}
-              className="flex items-center justify-center gap-2 rounded-full border border-amber-500 px-4 py-3 text-sm font-semibold text-amber-400 transition hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:border-amber-500/50 disabled:text-amber-200"
-            >
-              {isClipRanking ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-                  Recomputing CLIP ranks…
-                </span>
-              ) : (
-                "Re-run CLIP ranking"
-              )}
-            </button>
-            <p className="text-xs text-slate-500">
-              Re-rank results locally without another SerpAPI request.
+              Searches reuse the latest keywords. Generate or edit the list to run another lookup. Re-rank results locally without another SerpAPI request.
             </p>
             {(isShoppingLoading || isClipRanking) && (
               <p className="text-sm text-slate-400">
