@@ -49,6 +49,17 @@ const defaultImageModel =
   process.env.NEXT_PUBLIC_DEFAULT_IMAGE_MODEL ??
   "google/gemini-2.5-flash-image-preview";
 
+const imageModelPresets = [
+  {
+    id: "google/gemini-2.5-flash-image-preview",
+    label: "Gemini 2.5 Flash",
+  },
+  {
+    id: "openai/gpt-5-image",
+    label: "ChatGPT‑5 Image",
+  },
+];
+
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -279,6 +290,13 @@ export default function Home() {
       return item.clipScore >= clipThreshold;
     });
   }, [shoppingResults, clipThreshold]);
+
+  const selectedImageModelPreset = useMemo(
+    () =>
+      imageModelPresets.find((option) => option.id === imageModel)?.id ??
+      "custom",
+    [imageModel],
+  );
 
   const onBaseImageChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1664,16 +1682,50 @@ export default function Home() {
                         >
                           <span>Image model</span>
                         </label>
+                        <div className="flex flex-wrap gap-2">
+                          {imageModelPresets.map((option) => {
+                            const isSelected = selectedImageModelPreset === option.id;
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => setImageModel(option.id)}
+                                className={`rounded-full border px-4 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.35em] transition ${
+                                  isSelected
+                                    ? "border-amber-400 bg-amber-400 text-slate-950"
+                                    : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedImageModelPreset !== "custom") {
+                                setImageModel("");
+                              }
+                            }}
+                            className={`rounded-full border px-4 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.35em] transition ${
+                              selectedImageModelPreset === "custom"
+                                ? "border-amber-400 bg-amber-400 text-slate-950"
+                                : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+                            }`}
+                          >
+                            Custom
+                          </button>
+                        </div>
                         <input
                           id="imageModel"
                           type="text"
                           value={imageModel}
                           onChange={(event) => setImageModel(event.target.value)}
-                          placeholder="openai/chatgpt-5.0-latest"
+                          placeholder="openai/gpt-5-image"
                           className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
                         />
                         <p className="text-xs text-slate-400">
-                          Override the OpenRouter model ID. Try <code>openai/chatgpt-5.0-latest</code> to compare against Gemini.
+                          Pick a preset or paste any OpenRouter image-capable model ID. Gemini is great for inpainting; ChatGPT‑5 Image is fast for concepting.
                         </p>
                       </div>
                       <div className="space-y-2">
