@@ -15,6 +15,25 @@ export const config = {
   },
 };
 
+const MAX_BASE_IMAGE_BYTES = 12 * 1024 * 1024; // 12MB
+const MAX_MASK_BYTES = 6 * 1024 * 1024; // 6MB
+const MAX_INSERT_BYTES = 8 * 1024 * 1024; // 8MB
+const MAX_IMAGE_DIMENSION = 4096;
+const MAX_TOTAL_PIXELS = MAX_IMAGE_DIMENSION * MAX_IMAGE_DIMENSION;
+const ALLOWED_BASE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/avif",
+]);
+const ALLOWED_INSERT_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/avif",
+]);
+const MASK_TYPE = "image/png";
+
 const blobToken =
   process.env.BLOB_READ_WRITE_TOKEN?.trim() ??
   process.env.VERCEL_BLOB_WRITE_TOKEN?.trim() ??
@@ -85,8 +104,64 @@ export async function POST(request: Request) {
     );
   }
 
+  if (image.size > MAX_BASE_IMAGE_BYTES) {
+    return NextResponse.json(
+      {
+        error: `Base image exceeds the ${Math.floor(MAX_BASE_IMAGE_BYTES / (1024 * 1024))}MB upload limit.`,
+      },
+      { status: 413 },
+    );
+  }
+
+  const normalizedContentType =
+    typeof image.type === "string" ? image.type.toLowerCase() : "";
+  if (
+    normalizedContentType &&
+    !ALLOWED_BASE_TYPES.has(normalizedContentType)
+  ) {
+    return NextResponse.json(
+      {
+        error: "Base image must be PNG, JPEG, WebP, or AVIF.",
+      },
+      { status: 415 },
+    );
+  }
+
   const imageBuffer = Buffer.from(await image.arrayBuffer());
-  const contentType = image.type || "image/png";
+  const baseSharpForValidation = sharp(imageBuffer, {
+    limitInputPixels: MAX_TOTAL_PIXELS,
+  });
+
+  let baseWidth = 0;
+  let baseHeight = 0;
+  try {
+    const metadata = await baseSharpForValidation.metadata();
+    baseWidth = metadata.width ?? 0;
+    baseHeight = metadata.height ?? 0;
+    if (
+      baseWidth > MAX_IMAGE_DIMENSION ||
+      baseHeight > MAX_IMAGE_DIMENSION ||
+      baseWidth * baseHeight > MAX_TOTAL_PIXELS
+    ) {
+      return NextResponse.json(
+        {
+          error: `Base image dimensions exceed ${MAX_IMAGE_DIMENSION}px on a side.`,
+        },
+        { status: 413 },
+      );
+    }
+  } catch (error) {
+    console.error("Failed to read base image metadata.", error);
+    return NextResponse.json(
+      { error: "Unable to process the base image. Upload a valid photo file." },
+      { status: 415 },
+    );
+  }
+
+  const contentType =
+    normalizedContentType && ALLOWED_BASE_TYPES.has(normalizedContentType)
+      ? normalizedContentType
+      : "image/png";
 
   const apiBaseUrl = (
     process.env.OPENROUTER_API_BASE_URL ?? "https://openrouter.ai/api/v1"
@@ -167,7 +242,52 @@ export async function POST(request: Request) {
   let maskBuffer: Buffer | null = null;
 
   if (mask instanceof File) {
+    if (mask.size > MAX_MASK_BYTES) {
+      return NextResponse.json(
+        {
+          error: `Mask image exceeds the ${Math.floor(MAX_MASK_BYTES / (1024 * 1024))}MB upload limit.`,
+        },
+        { status: 413 },
+      );
+    }
+
+    const maskType =
+      typeof mask.type === "string" ? mask.type.toLowerCase() : MASK_TYPE;
+    if (maskType && maskType !== MASK_TYPE) {
+      return NextResponse.json(
+        {
+          error: "Mask image must be a PNG file.",
+        },
+        { status: 415 },
+      );
+    }
+
     maskBuffer = Buffer.from(await mask.arrayBuffer());
+    try {
+      const maskMetadata = await sharp(maskBuffer, {
+        limitInputPixels: MAX_TOTAL_PIXELS,
+      }).metadata();
+      const width = maskMetadata.width ?? 0;
+      const height = maskMetadata.height ?? 0;
+      if (
+        width > MAX_IMAGE_DIMENSION ||
+        height > MAX_IMAGE_DIMENSION ||
+        width * height > MAX_TOTAL_PIXELS
+      ) {
+        return NextResponse.json(
+          {
+            error: `Mask dimensions exceed ${MAX_IMAGE_DIMENSION}px on a side.`,
+          },
+          { status: 413 },
+        );
+      }
+    } catch (error) {
+      console.error("Failed to read mask metadata.", error);
+      return NextResponse.json(
+        { error: "Unable to process the mask image. Upload a valid PNG mask." },
+        { status: 415 },
+      );
+    }
     messageContent.push({
       type: "text",
       text: "The following image is a PNG mask: white pixels mark regions to edit, black pixels should remain untouched.",
@@ -182,11 +302,63 @@ export async function POST(request: Request) {
 
   if (insertImageFile && normalizedInsertRegion) {
     try {
+      if (insertImageFile.size > MAX_INSERT_BYTES) {
+        return NextResponse.json(
+          {
+            error: `Reference object exceeds the ${Math.floor(MAX_INSERT_BYTES / (1024 * 1024))}MB upload limit.`,
+          },
+          { status: 413 },
+        );
+      }
+
       insertBuffer = Buffer.from(await insertImageFile.arrayBuffer());
       insertContentType =
         insertImageFile.type && insertImageFile.type !== "application/octet-stream"
           ? insertImageFile.type
           : "image/png";
+      const normalizedInsertType =
+        typeof insertContentType === "string"
+          ? insertContentType.toLowerCase()
+          : "";
+      if (
+        normalizedInsertType &&
+        !ALLOWED_INSERT_TYPES.has(normalizedInsertType)
+      ) {
+        return NextResponse.json(
+          {
+            error: "Reference object must be PNG, JPEG, WebP, or AVIF.",
+          },
+          { status: 415 },
+        );
+      }
+      try {
+        const insertMetadata = await sharp(insertBuffer, {
+          limitInputPixels: MAX_TOTAL_PIXELS,
+        }).metadata();
+        const width = insertMetadata.width ?? 0;
+        const height = insertMetadata.height ?? 0;
+        if (
+          width > MAX_IMAGE_DIMENSION ||
+          height > MAX_IMAGE_DIMENSION ||
+          width * height > MAX_TOTAL_PIXELS
+        ) {
+          return NextResponse.json(
+            {
+              error: `Reference object dimensions exceed ${MAX_IMAGE_DIMENSION}px on a side.`,
+            },
+            { status: 413 },
+          );
+        }
+      } catch (error) {
+        console.error("Failed to read reference object metadata.", error);
+        return NextResponse.json(
+          {
+            error:
+              "Unable to process the reference object. Upload a valid image file.",
+          },
+          { status: 415 },
+        );
+      }
       const describePercent = (value: number) => {
         const rounded = Math.round(value * 1000) / 10;
         return `${rounded % 1 === 0 ? Math.trunc(rounded) : rounded}%`;
@@ -293,11 +465,10 @@ export async function POST(request: Request) {
 
     const generatedBuffer = Buffer.from(parsedImage.base64Data, "base64");
 
-    const baseSharp = sharp(imageBuffer);
-    const { width: originalWidth, height: originalHeight } =
-      await baseSharp.metadata();
-    const width = originalWidth ?? originalHeight ?? 1024;
-    const height = originalHeight ?? originalWidth ?? 1024;
+    const width =
+      baseWidth > 0 ? baseWidth : baseHeight > 0 ? baseHeight : 1024;
+    const height =
+      baseHeight > 0 ? baseHeight : baseWidth > 0 ? baseWidth : 1024;
     const insertPlacement =
       insertBuffer && normalizedInsertRegion
         ? {
@@ -311,13 +482,17 @@ export async function POST(request: Request) {
           }
         : null;
 
-    const baseImage = await baseSharp
+    const baseImage = await sharp(imageBuffer, {
+      limitInputPixels: MAX_TOTAL_PIXELS,
+    })
       .resize(width, height, { fit: "cover" })
       .ensureAlpha()
       .png()
       .toBuffer();
 
-    const generatedImage = await sharp(generatedBuffer)
+    const generatedImage = await sharp(generatedBuffer, {
+      limitInputPixels: MAX_TOTAL_PIXELS,
+    })
       .resize(width, height, { fit: "cover" })
       .ensureAlpha()
       .toBuffer();
@@ -325,7 +500,9 @@ export async function POST(request: Request) {
     let finalBuffer: Buffer;
 
     if (maskBuffer) {
-      const alphaChannel = await sharp(maskBuffer)
+      const alphaChannel = await sharp(maskBuffer, {
+        limitInputPixels: MAX_TOTAL_PIXELS,
+      })
         .resize(width, height, { fit: "cover" })
         .toColourspace("b-w")
         .linear(strength, 0)

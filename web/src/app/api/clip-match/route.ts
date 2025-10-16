@@ -47,12 +47,31 @@ function ensureDataUrl(value: string): Blob {
   return new Blob([buffer], { type: mimeType || "application/octet-stream" });
 }
 
+function isAllowedSerpThumbnail(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") {
+      return false;
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "serpapi.com") {
+      return true;
+    }
+    return hostname.endsWith(".serpapi.com");
+  } catch {
+    return false;
+  }
+}
+
 async function blobFromSource(url: string): Promise<Blob> {
   if (!url) {
     throw new Error("Encountered empty candidate image URL.");
   }
   if (url.startsWith("data:")) {
     return ensureDataUrl(url);
+  }
+  if (!isAllowedSerpThumbnail(url)) {
+    throw new Error("Only SerpAPI-hosted thumbnails are allowed for CLIP ranking.");
   }
   const response = await fetch(url);
   if (!response.ok) {

@@ -11,6 +11,16 @@ import {
   useState,
 } from "react";
 
+import { fetchJson, HttpError } from "@/lib/http";
+import { promptTemplates } from "@/components/workspace/promptTemplates";
+import { HeroSection } from "@/components/workspace/HeroSection";
+import {
+  clamp01,
+  cropImageToDataUrl,
+  dataUrlToFile,
+  fileToDataUrl,
+} from "@/components/workspace/utils";
+
 
 type GeneratedImage = {
   url: string;
@@ -55,76 +65,8 @@ const defaultModelId =
   process.env.NEXT_PUBLIC_OPENROUTER_IMAGE_MODEL ??
   "google/gemini-2.5-flash-image-preview";
 
-const promptTemplates = [
-  {
-    id: "holiday-cozy",
-    title: "Cozy Holiday Living Room",
-    description:
-      "Layered greenery, warm lighting, and seasonal accents without clutter.",
-    prompt:
-      "Transform the space into a cozy holiday living room with a neutral palette, fresh evergreen garlands, brass candleholders, and soft ambient lighting.",
-    negativePrompt:
-      "Avoid cartoonish decorations, oversized gifts, or unrealistic snow effects.",
-    guidanceScale: 8.5,
-    strength: 0.45,
-    inferenceSteps: 35,
-  },
-  {
-    id: "modern-minimal",
-    title: "Modern Minimal Loft",
-    description:
-      "Bright, airy, and minimalist with crisp lines and natural textures.",
-    prompt:
-      "Restyle the room into a modern minimal loft featuring light oak floors, white plaster walls, slimline furniture, and sculptural lighting accents.",
-    negativePrompt:
-      "Avoid clutter, heavy curtains, or ornate traditional decor.",
-    guidanceScale: 7,
-    strength: 0.3,
-    inferenceSteps: 32,
-  },
-  {
-    id: "coastal-retreat",
-    title: "Coastal Retreat Bedroom",
-    description:
-      "Serene seaside palette with airy fabrics and organic materials.",
-    prompt:
-      "Reimagine the space as a coastal retreat bedroom with sun-washed linens, woven textures, driftwood accents, and gentle turquoise highlights.",
-    negativePrompt:
-      "Avoid nautical kitsch, anchors, or overly vibrant primary colors.",
-    guidanceScale: 7.8,
-    strength: 0.4,
-    inferenceSteps: 38,
-  },
-] as const;
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-      } else {
-        reject(new Error("Unable to read file as data URL."));
-      }
-    };
-    reader.onerror = () => reject(new Error("Failed to read the selected file."));
-    reader.readAsDataURL(file);
-  });
-}
-
-function dataUrlToFile(dataUrl: string, filename: string): File {
-  const match = dataUrl.match(/^data:(.+);base64,(.*)$/);
-  if (!match) {
-    throw new Error("Unexpected image payload; expected a base64 data URL.");
-  }
-  const [, mimeType, base64] = match;
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new File([bytes], filename, { type: mimeType || "image/png" });
-}
+const isAbortError = (error: unknown) =>
+  error instanceof Error && error.name === "AbortError";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
@@ -185,11 +127,26 @@ export default function Home() {
   const cropOverlayRef = useRef<HTMLDivElement | null>(null);
   const cropStartRef = useRef<{ x: number; y: number } | null>(null);
   const insertDragOffsetRef = useRef<{ x: number; y: number } | null>(null);
+  const editControllerRef = useRef<AbortController | null>(null);
+  const keywordsControllerRef = useRef<AbortController | null>(null);
+  const shoppingControllerRef = useRef<AbortController | null>(null);
+  const clipControllerRef = useRef<AbortController | null>(null);
+  const smartRedoControllerRef = useRef<AbortController | null>(null);
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      editControllerRef.current?.abort();
+      keywordsControllerRef.current?.abort();
+      shoppingControllerRef.current?.abort();
+      clipControllerRef.current?.abort();
+      smartRedoControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = maskCanvasRef.current;
@@ -760,32 +717,20 @@ export default function Home() {
       formData.append("insertHeight", insertRect.height.toString());
     }
 
+    setIsLoading(true);
+    const controller = new AbortController();
+    editControllerRef.current?.abort();
+    editControllerRef.current = controller;
+
     try {
-      setIsLoading(true);
-      const response = await fetch("/api/edit", {
-        method: "POST",
-        body: formData,
-      });
-
-      const rawBody = await response.text();
-      let payload: { image?: string; error?: string } | null = null;
-
-      if (rawBody) {
-        try {
-          payload = JSON.parse(rawBody);
-        } catch {
-          payload = null;
-        }
-      }
-
-      if (!response.ok) {
-        const message =
-          payload?.error ??
-          (rawBody ? rawBody.slice(0, 160) : response.statusText);
-        throw new Error(
-          `Image edit failed (HTTP ${response.status}): ${message}`,
-        );
-      }
+      const payload = await fetchJson<{ image?: string }>(
+        "/api/edit",
+        {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        },
+      );
 
       const imageData = payload?.image;
 
@@ -817,13 +762,21 @@ export default function Home() {
         [createdAt]: "",
       }));
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       console.error(error);
       setErrorMessage(
-        error instanceof Error
+        error instanceof HttpError
           ? error.message
-          : "Something went wrong while editing the photo.",
+          : error instanceof Error
+            ? error.message
+            : "Something went wrong while editing the photo.",
       );
     } finally {
+      if (editControllerRef.current === controller) {
+        editControllerRef.current = null;
+      }
       setIsLoading(false);
     }
   };
@@ -848,54 +801,42 @@ export default function Home() {
       return;
     }
 
-    try {
-      setErrorMessage(null);
-      setSmartRedoTargetId(result.createdAt);
-      const resultModelId = result.modelId || defaultModelId;
-      const baseFile = dataUrlToFile(
-        result.sourceImage,
-        `smart-redo-base-${result.createdAt}.png`,
-      );
+    setErrorMessage(null);
+    setSmartRedoTargetId(result.createdAt);
+    const resultModelId = result.modelId || defaultModelId;
+    const baseFile = dataUrlToFile(
+      result.sourceImage,
+      `smart-redo-base-${result.createdAt}.png`,
+    );
 
-      const refinedPrompt = `${result.prompt.trim()}
+    const refinedPrompt = `${result.prompt.trim()}
 \nAdjust based on this feedback: ${feedback}`.trim();
-      const formData = new FormData();
-      formData.append("prompt", refinedPrompt);
-      formData.append("image", baseFile);
-      formData.append("guidanceScale", result.guidanceScale.toString());
-      formData.append("strength", result.strength.toString());
-      formData.append("inferenceSteps", result.inferenceSteps.toString());
-      if (result.negativePrompt) {
-        formData.append("negativePrompt", result.negativePrompt);
-      }
-      if (result.seed && result.seed.trim()) {
-        formData.append("seed", result.seed.trim());
-      }
+    const formData = new FormData();
+    formData.append("prompt", refinedPrompt);
+    formData.append("image", baseFile);
+    formData.append("guidanceScale", result.guidanceScale.toString());
+    formData.append("strength", result.strength.toString());
+    formData.append("inferenceSteps", result.inferenceSteps.toString());
+    if (result.negativePrompt) {
+      formData.append("negativePrompt", result.negativePrompt);
+    }
+    if (result.seed && result.seed.trim()) {
+      formData.append("seed", result.seed.trim());
+    }
 
-      const response = await fetch("/api/edit", {
-        method: "POST",
-        body: formData,
-      });
+    const controller = new AbortController();
+    smartRedoControllerRef.current?.abort();
+    smartRedoControllerRef.current = controller;
 
-      const rawBody = await response.text();
-      let payload: { image?: string; error?: string } | null = null;
-
-      if (rawBody) {
-        try {
-          payload = JSON.parse(rawBody);
-        } catch {
-          payload = null;
-        }
-      }
-
-      if (!response.ok) {
-        const message =
-          payload?.error ??
-          (rawBody ? rawBody.slice(0, 160) : response.statusText);
-        throw new Error(
-          `Smart redo failed (HTTP ${response.status}): ${message}`,
-        );
-      }
+    try {
+      const payload = await fetchJson<{ image?: string }>(
+        "/api/edit",
+        {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        },
+      );
 
       const imageData = payload?.image;
       if (!imageData) {
@@ -927,18 +868,24 @@ export default function Home() {
       }));
       setActiveRedoId(null);
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       console.error(error);
       setErrorMessage(
-        error instanceof Error
+        error instanceof HttpError
           ? error.message
-          : "Something went wrong while re-running the makeover.",
+          : error instanceof Error
+            ? error.message
+            : "Something went wrong while re-running the makeover.",
       );
     } finally {
+      if (smartRedoControllerRef.current === controller) {
+        smartRedoControllerRef.current = null;
+      }
       setSmartRedoTargetId(null);
     }
   };
-
-  const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
 
   const handleKeywordTargetChange = (
     event: ChangeEvent<HTMLSelectElement>,
@@ -1018,70 +965,6 @@ export default function Home() {
     });
   };
 
-  const cropImageToDataUrl = (
-    src: string,
-    rect: CropRect | null,
-  ): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const image = new Image();
-      image.crossOrigin = "anonymous";
-      image.onload = () => {
-        const naturalWidth = image.naturalWidth || image.width;
-        const naturalHeight = image.naturalHeight || image.height;
-
-        let sx = 0;
-        let sy = 0;
-        let sw = naturalWidth;
-        let sh = naturalHeight;
-
-        if (rect && rect.width > 0 && rect.height > 0) {
-          sx = Math.floor(rect.x * naturalWidth);
-          sy = Math.floor(rect.y * naturalHeight);
-          sw = Math.floor(rect.width * naturalWidth);
-          sh = Math.floor(rect.height * naturalHeight);
-
-          if (sw <= 0 || sh <= 0) {
-            sw = naturalWidth;
-            sh = naturalHeight;
-            sx = 0;
-            sy = 0;
-          } else {
-            if (sx < 0) sx = 0;
-            if (sy < 0) sy = 0;
-            if (sx + sw > naturalWidth) {
-              sw = naturalWidth - sx;
-            }
-            if (sy + sh > naturalHeight) {
-              sh = naturalHeight - sy;
-            }
-          }
-        }
-
-        sw = Math.max(sw, 1);
-        sh = Math.max(sh, 1);
-        if (sx > naturalWidth - sw) {
-          sx = Math.max(0, naturalWidth - sw);
-        }
-        if (sy > naturalHeight - sh) {
-          sy = Math.max(0, naturalHeight - sh);
-        }
-
-        const canvas = document.createElement("canvas");
-        canvas.width = sw;
-        canvas.height = sh;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("Failed to create a drawing context."));
-          return;
-        }
-        ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
-        const dataUrl = canvas.toDataURL("image/png");
-        resolve(dataUrl);
-      };
-      image.onerror = () => reject(new Error("Failed to load image for crop."));
-      image.src = src;
-    });
-
   const generateShoppingKeywords = async () => {
     setKeywordsError(null);
     setShoppingError(null);
@@ -1095,41 +978,31 @@ export default function Home() {
       return;
     }
 
+    let controller: AbortController | null = null;
     try {
       setIsKeywordsLoading(true);
       setShoppingKeywords("");
       const dataUrl = await cropImageToDataUrl(keywordImageUrl, cropRect);
       setLastClipReference(dataUrl);
 
-      const response = await fetch("/api/keywords", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      controller = new AbortController();
+      keywordsControllerRef.current?.abort();
+      keywordsControllerRef.current = controller;
+
+      const payload = await fetchJson<{ keywords?: string }>(
+        "/api/keywords",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            imageDataUrl: dataUrl,
+            sourceLabel: keywordSourceLabel,
+          }),
+          signal: controller.signal,
         },
-        body: JSON.stringify({
-          imageDataUrl: dataUrl,
-          sourceLabel: keywordSourceLabel,
-        }),
-      });
-
-      const rawBody = await response.text();
-      let payload: { keywords?: string; error?: string } | null = null;
-      if (rawBody) {
-        try {
-          payload = JSON.parse(rawBody);
-        } catch {
-          payload = null;
-        }
-      }
-
-      if (!response.ok) {
-        const message =
-          payload?.error ??
-          (rawBody ? rawBody.slice(0, 160) : response.statusText);
-        throw new Error(
-          `Keyword extraction failed (HTTP ${response.status}): ${message}`,
-        );
-      }
+      );
 
       const text = payload?.keywords;
       if (!text || !text.trim()) {
@@ -1144,14 +1017,22 @@ export default function Home() {
       setShoppingResults([]);
       setLastShoppingKeywords(null);
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       console.error(error);
       setShoppingKeywords("");
       setKeywordsError(
-        error instanceof Error
+        error instanceof HttpError
           ? error.message
-          : "Something went wrong while requesting shopping keywords.",
+          : error instanceof Error
+            ? error.message
+            : "Something went wrong while requesting shopping keywords.",
       );
     } finally {
+      if (keywordsControllerRef.current === controller) {
+        keywordsControllerRef.current = null;
+      }
       setIsKeywordsLoading(false);
     }
   };
@@ -1159,6 +1040,7 @@ export default function Home() {
   const computeClipRanking = async (
     referenceDataUrl: string,
     baseResults: ShoppingResult[],
+    signal?: AbortSignal,
   ): Promise<ShoppingResult[]> => {
     const candidates = Array.from(
       new Set(
@@ -1172,7 +1054,9 @@ export default function Home() {
       return baseResults;
     }
 
-    const response = await fetch("/api/clip-match", {
+    const payload = await fetchJson<{
+      results?: Array<{ url?: string; score?: number }>;
+    }>("/api/clip-match", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1182,28 +1066,11 @@ export default function Home() {
         candidateImages: candidates,
         limit: candidates.length,
       }),
+      signal,
     });
 
-    const rawBody = await response.text();
-    let payload: { results?: Array<{ url?: string; score?: number }>; error?: string } | null = null;
-    if (rawBody) {
-      try {
-        payload = JSON.parse(rawBody);
-      } catch {
-        payload = null;
-      }
-    }
-
-    if (!response.ok) {
-      const message =
-        payload?.error ?? (rawBody ? rawBody.slice(0, 160) : response.statusText);
-      throw new Error(
-        `CLIP ranking failed (HTTP ${response.status}): ${message}`,
-      );
-    }
-
     const results: ClipScoreResponse[] = Array.isArray(payload?.results)
-      ? (payload?.results ?? [])
+      ? payload.results
           .map((entry) => {
             if (!entry) return null;
             const url = typeof entry.url === "string" ? entry.url : null;
@@ -1271,8 +1138,16 @@ export default function Home() {
     setRawShoppingResults([]);
     setIsClipRanking(false);
 
+    let controller: AbortController | null = null;
+    let clipController: AbortController | null = null;
     try {
-      const response = await fetch("/api/shopping", {
+      controller = new AbortController();
+      shoppingControllerRef.current?.abort();
+      shoppingControllerRef.current = controller;
+
+      const payload = await fetchJson<{
+        results?: Array<Record<string, unknown>>;
+      }>("/api/shopping", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1281,34 +1156,11 @@ export default function Home() {
           keywords,
           limit: 16,
         }),
+        signal: controller.signal,
       });
 
-      const rawBody = await response.text();
-      let payload:
-        | {
-            results?: Array<Record<string, unknown>>;
-            error?: string;
-          }
-        | null = null;
-      if (rawBody) {
-        try {
-          payload = JSON.parse(rawBody);
-        } catch {
-          payload = null;
-        }
-      }
-
-      if (!response.ok) {
-        const message =
-          payload?.error ??
-          (rawBody ? rawBody.slice(0, 160) : response.statusText);
-        throw new Error(
-          `Shopping lookup failed (HTTP ${response.status}): ${message}`,
-        );
-      }
-
       const rawResults = Array.isArray(payload?.results)
-        ? payload?.results ?? []
+        ? payload.results
         : [];
 
       const parsedResults: ShoppingResult[] = rawResults
@@ -1365,16 +1217,25 @@ export default function Home() {
         );
         setLastClipReference(referenceDataUrl);
         setIsClipRanking(true);
+        clipController = new AbortController();
+        clipControllerRef.current?.abort();
+        clipControllerRef.current = clipController;
         rankedResults = await computeClipRanking(
           referenceDataUrl,
           baseResults,
+          clipController.signal,
         );
       } catch (error) {
+        if (isAbortError(error)) {
+          return;
+        }
         console.error("Failed to prepare reference image for CLIP", error);
         setShoppingError(
-          error instanceof Error
+          error instanceof HttpError
             ? error.message
-            : "Unable to prepare the reference image for CLIP ranking.",
+            : error instanceof Error
+              ? error.message
+              : "Unable to prepare the reference image for CLIP ranking.",
         );
       }
 
@@ -1392,14 +1253,25 @@ export default function Home() {
       }
       setLastShoppingKeywords(keywords);
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       console.error(error);
       setShoppingResults([]);
       setShoppingError(
-        error instanceof Error
+        error instanceof HttpError
           ? error.message
-          : "Something went wrong while contacting Google Shopping.",
+          : error instanceof Error
+            ? error.message
+            : "Something went wrong while contacting Google Shopping.",
       );
     } finally {
+      if (shoppingControllerRef.current === controller) {
+        shoppingControllerRef.current = null;
+      }
+      if (clipControllerRef.current === clipController) {
+        clipControllerRef.current = null;
+      }
       setIsShoppingLoading(false);
       setIsClipRanking(false);
     }
@@ -1413,6 +1285,7 @@ export default function Home() {
       return;
     }
 
+    let controller: AbortController | null = null;
     try {
       setShoppingError(null);
       setIsClipRanking(true);
@@ -1429,19 +1302,31 @@ export default function Home() {
         );
         setLastClipReference(referenceDataUrl);
       }
+      controller = new AbortController();
+      clipControllerRef.current?.abort();
+      clipControllerRef.current = controller;
       const ranked = await computeClipRanking(
         referenceDataUrl,
         rawShoppingResults,
+        controller.signal,
       );
       setShoppingResults(ranked);
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       console.error(error);
       setShoppingError(
-        error instanceof Error
+        error instanceof HttpError
           ? error.message
-          : "Something went wrong while re-ranking with CLIP.",
+          : error instanceof Error
+            ? error.message
+            : "Something went wrong while re-ranking with CLIP.",
       );
     } finally {
+      if (clipControllerRef.current === controller) {
+        clipControllerRef.current = null;
+      }
       setIsClipRanking(false);
     }
   };
@@ -1477,102 +1362,7 @@ export default function Home() {
         </div>
       </header>
       <main className="relative mx-auto max-w-6xl px-6 pb-24 pt-16 md:px-10">
-        <section className="overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-slate-900/95 via-slate-900/60 to-slate-900/20 p-10 shadow-[0_48px_140px_-72px_rgba(15,23,42,1)] ring-1 ring-white/10">
-          <div className="grid gap-12 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)] lg:items-center">
-            <div className="space-y-6">
-              <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/50 bg-amber-400/15 px-4 py-1 text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
-                Interior AI
-              </p>
-              <h1 className="text-4xl font-semibold leading-tight md:text-5xl">
-                Stage edited interiors, faster than moodboards or mockups.
-              </h1>
-              <p className="max-w-2xl text-base text-slate-300 md:text-lg">
-                Upload a reference photo, paint the areas you want to transform, and generate layered makeovers you can compare, crop, and shop.
-              </p>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                    Step 1
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-slate-100">
-                    Upload & mark focus
-                  </p>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Import the photo of your space and paint the furniture or walls you’d like Gemma to restyle.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                    Step 2
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-slate-100">
-                    Describe the vibe
-                  </p>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Prompt with materials, palette, and mood—Gemma renders polished makeovers in seconds.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                    Step 3
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-slate-100">
-                    Shop the look
-                  </p>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Generate keywords, filter CLIP matches, and jump straight to purchase-ready products.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6 text-sm text-slate-300 shadow-inner shadow-black/50">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
-                Workflow cheatsheet
-              </p>
-              <ol className="mt-5 space-y-4">
-                <li className="flex gap-3">
-                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
-                    1
-                  </span>
-                  <div>
-                    <p className="font-medium text-slate-100">
-                      Mask precisely with the brush or eraser
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Hold and drag to paint. Switch modes to erase any overpainting and reset when needed.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
-                    2
-                  </span>
-                  <div>
-                    <p className="font-medium text-slate-100">
-                      Capture multiple variations
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Every makeover you generate is saved below so you can compare prompts or reuse them for shopping.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-semibold text-amber-200">
-                    3
-                  </span>
-                  <div>
-                    <p className="font-medium text-slate-100">
-                      Crop before keywording
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Highlight the hero object, then let Gemma return a merchandisable keyword list and CLIP-ranked matches.
-                    </p>
-                  </div>
-                </li>
-              </ol>
-            </div>
-          </div>
-        </section>
+        <HeroSection />
         <section className="mt-14 grid gap-10 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)] lg:items-start">
           <div className="space-y-10">
             <form
