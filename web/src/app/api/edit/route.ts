@@ -493,7 +493,10 @@ export async function POST(request: Request) {
     const generatedImage = await sharp(generatedBuffer, {
       limitInputPixels: MAX_TOTAL_PIXELS,
     })
-      .resize(width, height, { fit: "cover" })
+      .resize(width, height, {
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
       .ensureAlpha()
       .toBuffer();
 
