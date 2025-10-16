@@ -84,11 +84,21 @@ export default function Home() {
   const [brushSize, setBrushSize] = useState(40);
   const [hasMask, setHasMask] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [insertImageFile, setInsertImageFile] = useState<File | null>(null);
+  const [insertPreviewUrl, setInsertPreviewUrl] = useState<string | null>(null);
+  const [insertImageDimensions, setInsertImageDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [insertRect, setInsertRect] = useState<CropRect | null>(null);
+  const [isDraggingInsert, setIsDraggingInsert] = useState(false);
+  const [reeditTargetId, setReeditTargetId] = useState<number | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const maskStageRef = useRef<HTMLDivElement | null>(null);
   const cropOverlayRef = useRef<HTMLDivElement | null>(null);
   const cropStartRef = useRef<{ x: number; y: number } | null>(null);
-
+  const insertDragOffsetRef = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -125,6 +135,59 @@ export default function Home() {
     };
     img.src = objectUrl;
   }, [imageFile]);
+
+  useEffect(() => {
+    if (!insertImageFile) {
+      setInsertPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return null;
+      });
+      setInsertImageDimensions(null);
+      setInsertRect(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(insertImageFile);
+    setInsertPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return objectUrl;
+    });
+
+    const img = new Image();
+    img.onload = () => {
+      const width = img.naturalWidth || 512;
+      const height = img.naturalHeight || 512;
+      setInsertImageDimensions({ width, height });
+      const aspectRatio = height / width || 1;
+      let initialWidth = 0.3;
+      let initialHeight = initialWidth * aspectRatio;
+      if (initialHeight > 0.6) {
+        initialHeight = 0.6;
+        initialWidth = initialHeight / aspectRatio;
+      }
+      if (initialWidth > 0.9) {
+        initialWidth = 0.9;
+        initialHeight = initialWidth * aspectRatio;
+      }
+      setInsertRect({
+        x: clamp01(0.5 - initialWidth / 2),
+        y: clamp01(0.65 - initialHeight / 2),
+        width: initialWidth,
+        height: initialHeight,
+      });
+    };
+    img.onerror = () => {
+      setErrorMessage(
+        "We couldn't read that reference object. Try a different image file.",
+      );
+      setInsertImageFile(null);
+    };
+    img.src = objectUrl;
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [insertImageFile]);
 
   useEffect(() => {
     if (keywordTarget === "original") {
@@ -218,6 +281,7 @@ export default function Home() {
       setPreviewUrl(null);
       setImageDimensions(null);
       setHasMask(false);
+      removeInsertImage();
       return;
     }
 
@@ -226,6 +290,17 @@ export default function Home() {
       if (current) URL.revokeObjectURL(current);
       return URL.createObjectURL(file);
     });
+  };
+
+  const onInsertImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      removeInsertImage();
+      event.target.value = "";
+      return;
+    }
+    setInsertImageFile(file);
+    event.target.value = "";
   };
 
   const drawStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -295,6 +370,179 @@ export default function Home() {
     lastPointRef.current = null;
   };
 
+  const removeInsertImage = () => {
+    setInsertImageFile(null);
+    setInsertImageDimensions(null);
+    setInsertRect(null);
+    setInsertPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    insertDragOffsetRef.current = null;
+    setIsDraggingInsert(false);
+  };
+
+  const updateInsertSize = (normalizedWidth: number) => {
+    if (!insertImageDimensions || !insertRect) return;
+    const aspectRatio =
+      insertImageDimensions.height / insertImageDimensions.width || 1;
+    let width = Math.min(Math.max(normalizedWidth, 0.05), 0.9);
+    let height = width * aspectRatio;
+    if (height > 0.95) {
+      height = 0.95;
+      width = Math.min(0.9, Math.max(0.05, height / aspectRatio));
+      height = width * aspectRatio;
+    }
+    width = Math.min(Math.max(width, 0.05), 0.9);
+    height = Math.min(Math.max(height, 0.05), 0.95);
+
+    setInsertRect((current) => {
+      if (!current) return current;
+      let nextX = current.x;
+      let nextY = current.y;
+      if (nextX + width > 1) {
+        nextX = clamp01(1 - width);
+      }
+      if (nextY + height > 1) {
+        nextY = clamp01(1 - height);
+      }
+      return {
+        ...current,
+        x: nextX,
+        y: nextY,
+        width,
+        height,
+      };
+    });
+  };
+
+  const beginInsertDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!insertRect) return;
+    event.preventDefault();
+    event.stopPropagation();
+    stopDrawing();
+    const stage = maskStageRef.current;
+    if (!stage) return;
+    const bounds = stage.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    const pointerX = clamp01((event.clientX - bounds.left) / bounds.width);
+    const pointerY = clamp01((event.clientY - bounds.top) / bounds.height);
+    insertDragOffsetRef.current = {
+      x: pointerX - insertRect.x,
+      y: pointerY - insertRect.y,
+    };
+    setIsDraggingInsert(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const updateInsertDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!isDraggingInsert || !insertRect) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const stage = maskStageRef.current;
+    if (!stage) return;
+    const bounds = stage.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    const pointerX = clamp01((event.clientX - bounds.left) / bounds.width);
+    const pointerY = clamp01((event.clientY - bounds.top) / bounds.height);
+    const offset =
+      insertDragOffsetRef.current ?? {
+        x: insertRect.width / 2,
+        y: insertRect.height / 2,
+      };
+    let nextX = pointerX - offset.x;
+    let nextY = pointerY - offset.y;
+    nextX = clamp01(Math.min(nextX, 1 - insertRect.width));
+    nextY = clamp01(Math.min(nextY, 1 - insertRect.height));
+    setInsertRect((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        x: nextX,
+        y: nextY,
+      };
+    });
+  };
+
+  const finishInsertDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    insertDragOffsetRef.current = null;
+    setIsDraggingInsert(false);
+  };
+
+  const reuseGeneratedImage = async (result: GeneratedImage) => {
+    try {
+      stopDrawing();
+      setErrorMessage(null);
+      removeInsertImage();
+      setReeditTargetId(result.createdAt);
+
+      const response = await fetch(result.url);
+      if (!response.ok) {
+        throw new Error(
+          `Unable to load that makeover for re-editing (HTTP ${response.status}).`,
+        );
+      }
+
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) {
+        throw new Error("The selected makeover returned an empty image.");
+      }
+
+      const mimeType =
+        blob.type && blob.type !== "application/octet-stream"
+          ? blob.type
+          : "image/png";
+      const extension =
+        mimeType.split("/")[1]?.split("+")[0]?.replace(/[^a-z0-9_-]/gi, "") ??
+        "png";
+      const filename = `makeover-${result.createdAt}.${extension || "png"}`;
+      const file = new File([blob], filename, { type: mimeType });
+
+      setImageFile(file);
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return URL.createObjectURL(file);
+      });
+      setPrompt(result.prompt);
+      setKeywordTarget("original");
+      setShoppingKeywords("");
+      setKeywordsError(null);
+      setShoppingError(null);
+      setShoppingResults([]);
+      setRawShoppingResults([]);
+      setLastShoppingKeywords(null);
+      setLastClipReference(null);
+      setCropRect(null);
+      setIsKeywordsLoading(false);
+      setIsShoppingLoading(false);
+      setIsClipRanking(false);
+      setHasMask(false);
+
+      const canvas = maskCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "black";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to reuse that makeover as a starting point. Try downloading and re-uploading it manually.",
+      );
+    } finally {
+      setReeditTargetId(null);
+    }
+  };
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage(null);
@@ -321,20 +569,91 @@ export default function Home() {
     if (seed.trim()) {
       formData.append("seed", seed.trim());
     }
+    let maskBlob: Blob | null = null;
     if (hasMask && maskCanvasRef.current) {
-      const maskBlob = await new Promise<Blob | null>((resolve) => {
-        maskCanvasRef.current?.toBlob(
-          (blob) => resolve(blob),
-          "image/png",
-          1,
-        );
-      });
-      if (maskBlob) {
-        formData.append(
-          "mask",
-          new File([maskBlob], "mask.png", { type: "image/png" }),
-        );
+      const canvas = maskCanvasRef.current;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        try {
+          const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          let hasPaintedPixels = false;
+          for (let index = 0; index < data.length; index += 4) {
+            if (data[index] > 0) {
+              hasPaintedPixels = true;
+              break;
+            }
+          }
+
+          if (hasPaintedPixels) {
+            maskBlob = await new Promise<Blob | null>((resolve) => {
+              canvas.toBlob(
+                (blob) => resolve(blob),
+                "image/png",
+                1,
+              );
+            });
+          } else {
+            setHasMask(false);
+          }
+        } catch (error) {
+          console.error("Failed to inspect the mask canvas before upload.", error);
+        }
       }
+    }
+
+    if (
+      !maskBlob &&
+      insertRect &&
+      imageDimensions &&
+      insertRect.width > 0 &&
+      insertRect.height > 0
+    ) {
+      try {
+        const syntheticCanvas = document.createElement("canvas");
+        syntheticCanvas.width = imageDimensions.width;
+        syntheticCanvas.height = imageDimensions.height;
+        const syntheticContext = syntheticCanvas.getContext("2d");
+        if (syntheticContext) {
+          syntheticContext.fillStyle = "black";
+          syntheticContext.fillRect(
+            0,
+            0,
+            syntheticCanvas.width,
+            syntheticCanvas.height,
+          );
+          syntheticContext.fillStyle = "white";
+          syntheticContext.fillRect(
+            insertRect.x * syntheticCanvas.width,
+            insertRect.y * syntheticCanvas.height,
+            insertRect.width * syntheticCanvas.width,
+            insertRect.height * syntheticCanvas.height,
+          );
+          maskBlob = await new Promise<Blob | null>((resolve) => {
+            syntheticCanvas.toBlob(
+              (blob) => resolve(blob),
+              "image/png",
+              1,
+            );
+          });
+        }
+      } catch (error) {
+        console.error("Failed to generate a placement mask for submission.", error);
+      }
+    }
+
+    if (maskBlob) {
+      formData.append(
+        "mask",
+        new File([maskBlob], "mask.png", { type: "image/png" }),
+      );
+    }
+
+    if (insertImageFile && insertRect) {
+      formData.append("insertImage", insertImageFile);
+      formData.append("insertX", insertRect.x.toString());
+      formData.append("insertY", insertRect.y.toString());
+      formData.append("insertWidth", insertRect.width.toString());
+      formData.append("insertHeight", insertRect.height.toString());
     }
 
     try {
@@ -1082,6 +1401,7 @@ export default function Home() {
                             Mask painter
                           </figcaption>
                           <div
+                            ref={maskStageRef}
                             className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30"
                             style={{
                               aspectRatio: imageDimensions
@@ -1109,6 +1429,37 @@ export default function Home() {
                               onPointerCancel={stopDrawing}
                               onContextMenu={(event) => event.preventDefault()}
                             />
+                            {insertRect && insertPreviewUrl && (
+                              <div className="pointer-events-none absolute inset-0">
+                                <div
+                                  className="absolute pointer-events-auto select-none rounded-xl border border-amber-200/80 bg-amber-300/10 shadow-[0_0_0_9999px_rgba(2,6,23,0.3)] backdrop-blur-[1px]"
+                                  style={{
+                                    left: `${insertRect.x * 100}%`,
+                                    top: `${insertRect.y * 100}%`,
+                                    width: `${insertRect.width * 100}%`,
+                                    height: `${insertRect.height * 100}%`,
+                                  }}
+                                  onPointerDown={beginInsertDrag}
+                                  onPointerMove={updateInsertDrag}
+                                  onPointerUp={finishInsertDrag}
+                                  onPointerLeave={finishInsertDrag}
+                                  onPointerCancel={finishInsertDrag}
+                                  >
+                                    <img
+                                      src={insertPreviewUrl}
+                                      alt="Reference object placement"
+                                      className="h-full w-full rounded-[0.65rem] object-cover"
+                                      draggable={false}
+                                    />
+                                    <div className="pointer-events-none absolute inset-1 rounded-[0.55rem] border border-amber-300/40" />
+                                  {!isDraggingInsert && (
+                                    <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-amber-400/90 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-950 shadow-lg">
+                                      Drag to position
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
@@ -1158,6 +1509,75 @@ export default function Home() {
                         <p className="text-[0.7rem] text-slate-400">
                           Paint white over the furniture or walls you want the AI to transform. Areas left black will remain untouched.
                         </p>
+                        <div className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 text-xs text-slate-300">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-amber-200">
+                                Optional — Reference object
+                              </p>
+                              <p className="text-slate-400">
+                                Drop an inspiration photo (like a tree or accent chair) and drag it into place. We’ll cue the model to anchor it there.
+                              </p>
+                            </div>
+                            {insertImageFile && (
+                              <button
+                                type="button"
+                                onClick={removeInsertImage}
+                                className="rounded-full border border-white/10 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.25em] text-slate-200 transition hover:bg-white/10"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                          {insertImageFile && insertRect ? (
+                            <div className="space-y-3">
+                              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                                <p className="font-medium text-slate-100">{insertImageFile.name}</p>
+                                <p className="mt-1 text-slate-400">
+                                  Drag the overlay on the photo to reposition. Resize with the slider to fine-tune scale.
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="flex justify-between text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                                  <span>Object width</span>
+                                  <span>{Math.round(insertRect.width * 100)}%</span>
+                                </label>
+                                <input
+                                  type="range"
+                                  min={0.05}
+                                  max={0.9}
+                                  step={0.01}
+                                  value={insertRect.width}
+                                  onChange={(event) => updateInsertSize(Number(event.target.value))}
+                                  className="w-full accent-amber-500"
+                                />
+                                <p className="text-slate-400">
+                                  Height follows automatically to keep the original aspect ratio.
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <label
+                              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-amber-300/60 bg-black/15 p-4 text-center transition ${previewUrl ? "hover:bg-black/10" : "cursor-not-allowed opacity-50"}`}
+                            >
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={onInsertImageChange}
+                                className="hidden"
+                                disabled={!previewUrl}
+                              />
+                              <span className="text-[0.65rem] font-semibold uppercase tracking-[0.4em] text-amber-200">
+                                Add reference object
+                              </span>
+                              <span className="text-slate-200">
+                                {previewUrl
+                                  ? "PNG or JPG up to 4 MB works best."
+                                  : "Upload your room photo first to place an object."}
+                              </span>
+                            </label>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div className="flex min-h-[13rem] items-center justify-center rounded-2xl border border-dashed border-white/15 bg-black/20 p-4 text-sm text-slate-400">
@@ -1381,6 +1801,21 @@ export default function Home() {
                             {new Date(result.createdAt).toLocaleTimeString()}
                           </p>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => reuseGeneratedImage(result)}
+                          disabled={isLoading || reeditTargetId === result.createdAt}
+                          className="flex items-center justify-center gap-2 rounded-full border border-amber-400/70 px-3 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.35em] text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:border-amber-400/40 disabled:text-amber-200/60"
+                        >
+                          {reeditTargetId === result.createdAt ? (
+                            <span className="flex items-center gap-2">
+                              <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
+                              Preparing…
+                            </span>
+                          ) : (
+                            "Re-edit this makeover"
+                          )}
+                        </button>
                       </div>
                     </article>
                   ))}

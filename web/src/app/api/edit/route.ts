@@ -65,6 +65,11 @@ export async function POST(request: Request) {
   const strengthInput = formData.get("strength");
   const seedInput = formData.get("seed");
   const inferenceStepsInput = formData.get("inferenceSteps");
+  const insertImage = formData.get("insertImage");
+  const insertXInput = formData.get("insertX");
+  const insertYInput = formData.get("insertY");
+  const insertWidthInput = formData.get("insertWidth");
+  const insertHeightInput = formData.get("insertHeight");
 
   if (typeof prompt !== "string" || !prompt.trim()) {
     return NextResponse.json(
@@ -98,6 +103,36 @@ export async function POST(request: Request) {
   );
   const parsedSeed = parseNumber(seedInput, Number.NaN);
   const seed = Number.isFinite(parsedSeed) ? Math.floor(parsedSeed) : undefined;
+  const insertCoordinates = {
+    x: parseNumber(insertXInput, Number.NaN),
+    y: parseNumber(insertYInput, Number.NaN),
+    width: parseNumber(insertWidthInput, Number.NaN),
+    height: parseNumber(insertHeightInput, Number.NaN),
+  };
+  const insertImageFile = insertImage instanceof File ? insertImage : null;
+  const insertRegionValid =
+    insertImageFile !== null &&
+    Number.isFinite(insertCoordinates.x) &&
+    Number.isFinite(insertCoordinates.y) &&
+    Number.isFinite(insertCoordinates.width) &&
+    Number.isFinite(insertCoordinates.height) &&
+    insertCoordinates.width > 0 &&
+    insertCoordinates.height > 0;
+  const normalizedInsertRegion = insertRegionValid
+    ? (() => {
+        const x = clampNumber(insertCoordinates.x, 0, 1);
+        const y = clampNumber(insertCoordinates.y, 0, 1);
+        let width = clampNumber(insertCoordinates.width, 0.01, 1);
+        let height = clampNumber(insertCoordinates.height, 0.01, 1);
+        if (x + width > 1) {
+          width = clampNumber(1 - x, 0.01, 1);
+        }
+        if (y + height > 1) {
+          height = clampNumber(1 - y, 0.01, 1);
+        }
+        return { x, y, width, height };
+      })()
+    : null;
 
   const imageBase64 = imageBuffer.toString("base64");
   const promptPieces = [prompt.trim()];
@@ -127,6 +162,8 @@ export async function POST(request: Request) {
     },
   ];
 
+  let insertBuffer: Buffer | null = null;
+  let insertContentType: string | null = null;
   let maskBuffer: Buffer | null = null;
 
   if (mask instanceof File) {
@@ -141,6 +178,46 @@ export async function POST(request: Request) {
         url: `data:image/png;base64,${maskBuffer.toString("base64")}`,
       },
     });
+  }
+
+  if (insertImageFile && normalizedInsertRegion) {
+    try {
+      insertBuffer = Buffer.from(await insertImageFile.arrayBuffer());
+      insertContentType =
+        insertImageFile.type && insertImageFile.type !== "application/octet-stream"
+          ? insertImageFile.type
+          : "image/png";
+      const describePercent = (value: number) => {
+        const rounded = Math.round(value * 1000) / 10;
+        return `${rounded % 1 === 0 ? Math.trunc(rounded) : rounded}%`;
+      };
+      messageContent.push({
+        type: "text",
+        text: `Blend the provided object into the room inside the highlighted region: top-left ${describePercent(
+          normalizedInsertRegion.x,
+        )} from the left and ${describePercent(
+          normalizedInsertRegion.y,
+        )} from the top. The box spans ${describePercent(
+          normalizedInsertRegion.width,
+        )} of the width and ${describePercent(
+          normalizedInsertRegion.height,
+        )} of the height. Preserve lighting, scale, and shadows so it feels grounded.`,
+      });
+      messageContent.push({
+        type: "text",
+        text: "Reference object image:",
+      });
+      messageContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${insertContentType};base64,${insertBuffer.toString("base64")}`,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to serialise the insert reference image.", error);
+      insertBuffer = null;
+      insertContentType = null;
+    }
   }
 
   if (typeof seed === "number") {
@@ -221,6 +298,18 @@ export async function POST(request: Request) {
       await baseSharp.metadata();
     const width = originalWidth ?? originalHeight ?? 1024;
     const height = originalHeight ?? originalWidth ?? 1024;
+    const insertPlacement =
+      insertBuffer && normalizedInsertRegion
+        ? {
+            normalized: normalizedInsertRegion,
+            pixels: {
+              x: Math.round(normalizedInsertRegion.x * width),
+              y: Math.round(normalizedInsertRegion.y * height),
+              width: Math.round(normalizedInsertRegion.width * width),
+              height: Math.round(normalizedInsertRegion.height * height),
+            },
+          }
+        : null;
 
     const baseImage = await baseSharp
       .resize(width, height, { fit: "cover" })
@@ -284,6 +373,18 @@ export async function POST(request: Request) {
         mask instanceof File && typeof mask.name === "string" && mask.name
           ? mask.name
           : null,
+      insertReferenceProvided: Boolean(insertBuffer),
+      insertReferenceContentType: insertContentType,
+      insertReferenceFilename:
+        insertImageFile &&
+        typeof insertImageFile.name === "string" &&
+        insertImageFile.name
+          ? insertImageFile.name
+          : null,
+      insertPlacementNormalized: insertPlacement
+        ? insertPlacement.normalized
+        : null,
+      insertPlacementPixels: insertPlacement ? insertPlacement.pixels : null,
     };
 
     const blobDocumentation = await documentImagesToBlob({
