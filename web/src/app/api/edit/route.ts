@@ -70,6 +70,7 @@ export async function POST(request: Request) {
   const insertYInput = formData.get("insertY");
   const insertWidthInput = formData.get("insertWidth");
   const insertHeightInput = formData.get("insertHeight");
+  const modelOverride = formData.get("modelId");
 
   if (typeof prompt !== "string" || !prompt.trim()) {
     return NextResponse.json(
@@ -91,9 +92,13 @@ export async function POST(request: Request) {
   const apiBaseUrl = (
     process.env.OPENROUTER_API_BASE_URL ?? "https://openrouter.ai/api/v1"
   ).replace(/\/$/, "");
-  const modelId =
+  const envModelId =
     process.env.OPENROUTER_IMAGE_MODEL ??
     "google/gemini-2.5-flash-image-preview";
+  const modelId =
+    typeof modelOverride === "string" && modelOverride.trim()
+      ? modelOverride.trim()
+      : envModelId;
   const guidanceScale = clampNumber(parseNumber(guidanceScaleInput, 7.5), 1, 20);
   const strength = clampNumber(parseNumber(strengthInput, 0.35), 0.1, 0.9);
   const inferenceSteps = clampInteger(
@@ -365,6 +370,7 @@ export async function POST(request: Request) {
       seedInput: typeof seedInput === "string" ? seedInput : null,
       temperature,
       modelId,
+      modelOverrideApplied: modelId !== envModelId,
       apiBaseUrl,
       maskProvided: Boolean(maskBuffer),
       originalFilename:

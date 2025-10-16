@@ -44,6 +44,11 @@ type ClipScoreResponse = {
   score: number;
 };
 
+const defaultImageModel =
+  process.env.NEXT_PUBLIC_OPENROUTER_IMAGE_MODEL ??
+  process.env.NEXT_PUBLIC_DEFAULT_IMAGE_MODEL ??
+  "google/gemini-2.5-flash-image-preview";
+
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -92,6 +97,7 @@ export default function Home() {
   } | null>(null);
   const [insertRect, setInsertRect] = useState<CropRect | null>(null);
   const [isDraggingInsert, setIsDraggingInsert] = useState(false);
+  const [imageModel, setImageModel] = useState(defaultImageModel);
   const [reeditTargetId, setReeditTargetId] = useState<number | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -646,6 +652,10 @@ export default function Home() {
         "mask",
         new File([maskBlob], "mask.png", { type: "image/png" }),
       );
+    }
+
+    if (imageModel.trim()) {
+      formData.append("modelId", imageModel.trim());
     }
 
     if (insertImageFile && insertRect) {
@@ -1647,6 +1657,25 @@ export default function Home() {
                   </div>
                   {showAdvanced && (
                     <div className="mt-6 grid gap-5 border-t border-white/5 pt-5 text-sm text-slate-200">
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="imageModel"
+                          className="flex justify-between text-xs font-semibold uppercase tracking-[0.35em] text-slate-400"
+                        >
+                          <span>Image model</span>
+                        </label>
+                        <input
+                          id="imageModel"
+                          type="text"
+                          value={imageModel}
+                          onChange={(event) => setImageModel(event.target.value)}
+                          placeholder="openai/chatgpt-5.0-latest"
+                          className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+                        />
+                        <p className="text-xs text-slate-400">
+                          Override the OpenRouter model ID. Try <code>openai/chatgpt-5.0-latest</code> to compare against Gemini.
+                        </p>
+                      </div>
                       <div className="space-y-2">
                         <label className="flex justify-between text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
                           <span>Blend amount (Strength)</span>
