@@ -16,6 +16,13 @@ type GeneratedImage = {
   url: string;
   createdAt: number;
   prompt: string;
+  sourceImage: string;
+  modelId: string;
+  negativePrompt: string | null;
+  guidanceScale: number;
+  strength: number;
+  inferenceSteps: number;
+  seed: string | null;
 };
 
 type KeywordTarget = "original" | number;
@@ -43,6 +50,81 @@ type ClipScoreResponse = {
   url: string;
   score: number;
 };
+
+const defaultModelId =
+  process.env.NEXT_PUBLIC_OPENROUTER_IMAGE_MODEL ??
+  "google/gemini-2.5-flash-image-preview";
+
+const promptTemplates = [
+  {
+    id: "holiday-cozy",
+    title: "Cozy Holiday Living Room",
+    description:
+      "Layered greenery, warm lighting, and seasonal accents without clutter.",
+    prompt:
+      "Transform the space into a cozy holiday living room with a neutral palette, fresh evergreen garlands, brass candleholders, and soft ambient lighting.",
+    negativePrompt:
+      "Avoid cartoonish decorations, oversized gifts, or unrealistic snow effects.",
+    guidanceScale: 8.5,
+    strength: 0.45,
+    inferenceSteps: 35,
+  },
+  {
+    id: "modern-minimal",
+    title: "Modern Minimal Loft",
+    description:
+      "Bright, airy, and minimalist with crisp lines and natural textures.",
+    prompt:
+      "Restyle the room into a modern minimal loft featuring light oak floors, white plaster walls, slimline furniture, and sculptural lighting accents.",
+    negativePrompt:
+      "Avoid clutter, heavy curtains, or ornate traditional decor.",
+    guidanceScale: 7,
+    strength: 0.3,
+    inferenceSteps: 32,
+  },
+  {
+    id: "coastal-retreat",
+    title: "Coastal Retreat Bedroom",
+    description:
+      "Serene seaside palette with airy fabrics and organic materials.",
+    prompt:
+      "Reimagine the space as a coastal retreat bedroom with sun-washed linens, woven textures, driftwood accents, and gentle turquoise highlights.",
+    negativePrompt:
+      "Avoid nautical kitsch, anchors, or overly vibrant primary colors.",
+    guidanceScale: 7.8,
+    strength: 0.4,
+    inferenceSteps: 38,
+  },
+] as const;
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Unable to read file as data URL."));
+      }
+    };
+    reader.onerror = () => reject(new Error("Failed to read the selected file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const match = dataUrl.match(/^data:(.+);base64,(.*)$/);
+  if (!match) {
+    throw new Error("Unexpected image payload; expected a base64 data URL.");
+  }
+  const [, mimeType, base64] = match;
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], filename, { type: mimeType || "image/png" });
+}
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
@@ -93,6 +175,10 @@ export default function Home() {
   const [insertRect, setInsertRect] = useState<CropRect | null>(null);
   const [isDraggingInsert, setIsDraggingInsert] = useState(false);
   const [reeditTargetId, setReeditTargetId] = useState<number | null>(null);
+  const [comparisonPositions, setComparisonPositions] = useState<Record<number, number>>({});
+  const [activeRedoId, setActiveRedoId] = useState<number | null>(null);
+  const [redoNotes, setRedoNotes] = useState<Record<number, string>>({});
+  const [smartRedoTargetId, setSmartRedoTargetId] = useState<number | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const maskStageRef = useRef<HTMLDivElement | null>(null);
@@ -370,6 +456,15 @@ export default function Home() {
     lastPointRef.current = null;
   };
 
+  const applyTemplate = (template: (typeof promptTemplates)[number]) => {
+    setPrompt(template.prompt);
+    setNegativePrompt(template.negativePrompt ?? "");
+    setGuidanceScale(template.guidanceScale);
+    setStrength(template.strength);
+    setInferenceSteps(template.inferenceSteps);
+    setShowAdvanced(true);
+  };
+
   const removeInsertImage = () => {
     setInsertImageFile(null);
     setInsertImageDimensions(null);
@@ -509,6 +604,11 @@ export default function Home() {
         return URL.createObjectURL(file);
       });
       setPrompt(result.prompt);
+      setNegativePrompt(result.negativePrompt ?? "");
+      setGuidanceScale(result.guidanceScale);
+      setStrength(result.strength);
+      setInferenceSteps(result.inferenceSteps);
+      setSeed(result.seed ?? "");
       setKeywordTarget("original");
       setShoppingKeywords("");
       setKeywordsError(null);
@@ -557,17 +657,21 @@ export default function Home() {
       return;
     }
 
+    const baseImageDataUrl = await fileToDataUrl(imageFile);
+    const trimmedNegativePrompt = negativePrompt.trim();
+    const trimmedSeed = seed.trim();
+
     const formData = new FormData();
     formData.append("prompt", prompt);
     formData.append("image", imageFile);
     formData.append("guidanceScale", guidanceScale.toString());
     formData.append("strength", strength.toString());
     formData.append("inferenceSteps", inferenceSteps.toString());
-    if (negativePrompt.trim()) {
-      formData.append("negativePrompt", negativePrompt);
+    if (trimmedNegativePrompt) {
+      formData.append("negativePrompt", trimmedNegativePrompt);
     }
-    if (seed.trim()) {
-      formData.append("seed", seed.trim());
+    if (trimmedSeed) {
+      formData.append("seed", trimmedSeed);
     }
     let maskBlob: Blob | null = null;
     if (hasMask && maskCanvasRef.current) {
@@ -689,14 +793,29 @@ export default function Home() {
         throw new Error("The AI service returned an unexpected response.");
       }
 
-      setResults((history) => [
-        {
-          url: imageData,
-          createdAt: Date.now(),
-          prompt,
-        },
-        ...history,
-      ]);
+      const createdAt = Date.now();
+      const newResult: GeneratedImage = {
+        url: imageData,
+        createdAt,
+        prompt,
+        sourceImage: baseImageDataUrl,
+        modelId: defaultModelId,
+        negativePrompt: trimmedNegativePrompt || null,
+        guidanceScale,
+        strength,
+        inferenceSteps,
+        seed: trimmedSeed || null,
+      };
+
+      setResults((history) => [newResult, ...history]);
+      setComparisonPositions((positions) => ({
+        ...positions,
+        [createdAt]: 50,
+      }));
+      setRedoNotes((notes) => ({
+        ...notes,
+        [createdAt]: "",
+      }));
     } catch (error) {
       console.error(error);
       setErrorMessage(
@@ -715,6 +834,109 @@ export default function Home() {
         ? "bg-amber-500 text-slate-950"
         : "bg-white/5 text-slate-300 hover:bg-white/10"
     }`;
+
+  const toggleSmartRedo = (resultId: number) => {
+    setActiveRedoId((current) => (current === resultId ? null : resultId));
+    setSmartRedoTargetId(null);
+  };
+
+  const handleSmartRedo = async (result: GeneratedImage) => {
+    const feedback = (redoNotes[result.createdAt] ?? "").trim();
+    if (!feedback) {
+      setErrorMessage("Add a quick note about what to change before running Smart Redo.");
+      setActiveRedoId(result.createdAt);
+      return;
+    }
+
+    try {
+      setErrorMessage(null);
+      setSmartRedoTargetId(result.createdAt);
+      const resultModelId = result.modelId || defaultModelId;
+      const baseFile = dataUrlToFile(
+        result.sourceImage,
+        `smart-redo-base-${result.createdAt}.png`,
+      );
+
+      const refinedPrompt = `${result.prompt.trim()}
+\nAdjust based on this feedback: ${feedback}`.trim();
+      const formData = new FormData();
+      formData.append("prompt", refinedPrompt);
+      formData.append("image", baseFile);
+      formData.append("guidanceScale", result.guidanceScale.toString());
+      formData.append("strength", result.strength.toString());
+      formData.append("inferenceSteps", result.inferenceSteps.toString());
+      if (result.negativePrompt) {
+        formData.append("negativePrompt", result.negativePrompt);
+      }
+      if (result.seed && result.seed.trim()) {
+        formData.append("seed", result.seed.trim());
+      }
+
+      const response = await fetch("/api/edit", {
+        method: "POST",
+        body: formData,
+      });
+
+      const rawBody = await response.text();
+      let payload: { image?: string; error?: string } | null = null;
+
+      if (rawBody) {
+        try {
+          payload = JSON.parse(rawBody);
+        } catch {
+          payload = null;
+        }
+      }
+
+      if (!response.ok) {
+        const message =
+          payload?.error ??
+          (rawBody ? rawBody.slice(0, 160) : response.statusText);
+        throw new Error(
+          `Smart redo failed (HTTP ${response.status}): ${message}`,
+        );
+      }
+
+      const imageData = payload?.image;
+      if (!imageData) {
+        throw new Error("The AI service returned an unexpected response.");
+      }
+
+      const createdAt = Date.now();
+      const newResult: GeneratedImage = {
+        url: imageData,
+        createdAt,
+        prompt: refinedPrompt,
+        sourceImage: result.sourceImage,
+        modelId: resultModelId,
+        negativePrompt: result.negativePrompt,
+        guidanceScale: result.guidanceScale,
+        strength: result.strength,
+        inferenceSteps: result.inferenceSteps,
+        seed: result.seed,
+      };
+
+      setResults((history) => [newResult, ...history]);
+      setComparisonPositions((positions) => ({
+        ...positions,
+        [createdAt]: 50,
+      }));
+      setRedoNotes((notes) => ({
+        ...notes,
+        [createdAt]: "",
+      }));
+      setActiveRedoId(null);
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while re-running the makeover.",
+      );
+    } finally {
+      setSmartRedoTargetId(null);
+    }
+  };
 
   const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
 
@@ -1606,21 +1828,46 @@ export default function Home() {
                       onChange={(event) => setPrompt(event.target.value)}
                       className="min-h-[12rem] w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
                     />
-                    <div className="space-y-3 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                        Prompt ideas
-                      </p>
-                      <ul className="space-y-3 text-sm text-slate-300">
-                        <li>
-                          “Rustic cabin aesthetic with reclaimed wood beams, copper fixtures, and warm candle lighting.”
-                        </li>
-                        <li>
-                          “Bohemian lounge with layered textiles, hanging plants, and low ambient lights.”
-                        </li>
-                        <li>
-                          “Minimalist Japanese living room, tatami flooring, and soft natural light.”
-                        </li>
-                      </ul>
+                    <div className="space-y-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
+                      <div className="space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Templates
+                        </p>
+                        <div className="space-y-2">
+                          {promptTemplates.map((template) => (
+                            <button
+                              key={template.id}
+                              type="button"
+                              onClick={() => applyTemplate(template)}
+                              className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-left transition hover:border-amber-400/80 hover:bg-amber-400/10"
+                            >
+                              <p className="text-sm font-semibold text-slate-100">
+                                {template.title}
+                              </p>
+                              <p className="text-xs text-slate-400">{template.description}</p>
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[0.7rem] text-slate-400">
+                          Applying a template updates the prompt and advanced controls — feel free to keep adjusting afterward.
+                        </p>
+                      </div>
+                      <div className="space-y-3 border-t border-white/10 pt-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Prompt ideas
+                        </p>
+                        <ul className="space-y-3 text-sm text-slate-300">
+                          <li>
+                            “Rustic cabin aesthetic with reclaimed wood beams, copper fixtures, and warm candle lighting.”
+                          </li>
+                          <li>
+                            “Bohemian lounge with layered textiles, hanging plants, and low ambient lights.”
+                          </li>
+                          <li>
+                            “Minimalist Japanese living room, tatami flooring, and soft natural light.”
+                          </li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1784,41 +2031,146 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="mt-6 grid gap-6 sm:grid-cols-2">
-                  {results.map((result) => (
-                    <article
-                      key={result.createdAt}
-                      className="space-y-3 rounded-3xl border border-white/10 bg-black/30 p-4 shadow-[0_25px_60px_-50px_rgba(15,23,42,1)]"
-                    >
-                      <img
-                        src={result.url}
-                        alt={`Generated makeover for ${result.prompt}`}
-                        className="aspect-square w-full rounded-2xl border border-black/30 object-cover shadow-2xl"
-                      />
-                      <div className="space-y-2 text-sm text-slate-300">
-                        <div className="space-y-1">
-                          <p className="font-medium text-slate-100">{result.prompt}</p>
-                          <p className="text-xs text-slate-500">
-                            {new Date(result.createdAt).toLocaleTimeString()}
+                  {results.map((result) => {
+                    const sliderPosition = comparisonPositions[result.createdAt] ?? 50;
+                    const baseImage = result.sourceImage || previewUrl || result.url;
+                    const redoOpen = activeRedoId === result.createdAt;
+                    const displayModelId = result.modelId || defaultModelId;
+                    return (
+                      <article
+                        key={result.createdAt}
+                        className="space-y-4 rounded-3xl border border-white/10 bg-black/30 p-4 shadow-[0_25px_60px_-50px_rgba(15,23,42,1)]"
+                      >
+                        <div className="space-y-3">
+                          <div className="relative aspect-square w-full overflow-hidden rounded-2xl border border-black/30">
+                            <img
+                              src={baseImage}
+                              alt="Original reference"
+                              className="absolute inset-0 h-full w-full object-cover"
+                              draggable={false}
+                            />
+                            <div className="pointer-events-none absolute inset-0">
+                              <div
+                                className="absolute inset-0 overflow-hidden"
+                                style={{
+                                  clipPath: `inset(0 ${Math.max(
+                                    0,
+                                    100 - sliderPosition,
+                                  )}% 0 0)`,
+                                }}
+                              >
+                                <img
+                                  src={result.url}
+                                  alt={`Generated makeover for ${result.prompt}`}
+                                  className="h-full w-full object-cover"
+                                  draggable={false}
+                                />
+                              </div>
+                              <div
+                                className="absolute top-0 bottom-0 w-0.5 bg-amber-400/90"
+                                style={{ left: `calc(${sliderPosition}% - 1px)` }}
+                              />
+                              <div
+                                className="absolute top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-amber-400 text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-slate-950 shadow-lg"
+                                style={{ left: `calc(${sliderPosition}% - 14px)` }}
+                              >
+                                ↔
+                              </div>
+                            </div>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={sliderPosition}
+                            onChange={(event) =>
+                              setComparisonPositions((positions) => ({
+                                ...positions,
+                                [result.createdAt]: Number(event.target.value),
+                              }))
+                            }
+                            className="w-full accent-amber-500"
+                          />
+                          <p className="text-[0.7rem] text-slate-400">
+                            Drag the handle to compare the original upload with the makeover.
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => reuseGeneratedImage(result)}
-                          disabled={isLoading || reeditTargetId === result.createdAt}
-                          className="flex items-center justify-center gap-2 rounded-full border border-amber-400/70 px-3 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.35em] text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:border-amber-400/40 disabled:text-amber-200/60"
-                        >
-                          {reeditTargetId === result.createdAt ? (
-                            <span className="flex items-center gap-2">
-                              <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
-                              Preparing…
-                            </span>
-                          ) : (
-                            "Re-edit this makeover"
+                        <div className="space-y-3 text-sm text-slate-300">
+                          <div className="space-y-1">
+                            <p className="font-medium text-slate-100">
+                              {result.prompt}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Saved at {new Date(result.createdAt).toLocaleTimeString()} · Model: {displayModelId}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => reuseGeneratedImage(result)}
+                              disabled={isLoading || reeditTargetId === result.createdAt}
+                              className="flex flex-1 items-center justify-center gap-2 rounded-full border border-amber-400/70 px-3 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.35em] text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:border-amber-400/40 disabled:text-amber-200/60"
+                            >
+                              {reeditTargetId === result.createdAt ? (
+                                <span className="flex items-center gap-2">
+                                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
+                                  Preparing…
+                                </span>
+                              ) : (
+                                "Re-edit"
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleSmartRedo(result.createdAt)}
+                              className={`flex flex-1 items-center justify-center gap-2 rounded-full border px-3 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.35em] transition ${
+                                redoOpen
+                                  ? "border-amber-400 bg-amber-400 text-slate-950"
+                                  : "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"
+                              }`}
+                            >
+                              {redoOpen ? "Hide Smart Redo" : "Smart Redo"}
+                            </button>
+                          </div>
+                          {redoOpen && (
+                            <div className="space-y-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                              <textarea
+                                value={redoNotes[result.createdAt] ?? ""}
+                                onChange={(event) =>
+                                  setRedoNotes((notes) => ({
+                                    ...notes,
+                                    [result.createdAt]: event.target.value,
+                                  }))
+                                }
+                                placeholder="Describe what to adjust (e.g. brighten lighting, keep sofa, swap rug)."
+                                className="w-full rounded-xl border border-white/15 bg-black/40 p-3 text-sm text-slate-200 outline-none ring-amber-500 transition focus:ring-2"
+                                rows={3}
+                              />
+                              <div className="flex flex-wrap items-center justify-between gap-3 text-[0.7rem] text-slate-400">
+                                <p>We’ll reuse the original photo and prompt, layering in your notes.</p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSmartRedo(result)}
+                                  disabled={smartRedoTargetId === result.createdAt}
+                                  className="flex items-center justify-center gap-2 rounded-full bg-amber-500 px-4 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.35em] text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/60"
+                                >
+                                  {smartRedoTargetId === result.createdAt ? (
+                                    <span className="flex items-center gap-2">
+                                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
+                                      Reworking…
+                                    </span>
+                                  ) : (
+                                    "Apply feedback"
+                                  )}
+                                </button>
+                              </div>
+                            </div>
                           )}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </section>
             ) : (
