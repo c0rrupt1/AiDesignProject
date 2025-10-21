@@ -2,8 +2,7 @@
 
 import { FormEvent, useState } from "react";
 
-const WEBHOOK_URL =
-  "https://deckd.app.n8n.cloud/webhook/04a63e4d-c10e-48c0-ba40-a37d8a7688ac";
+const API_ROUTE = "/api/request";
 
 type SubmissionState = "idle" | "sending" | "success" | "error";
 
@@ -36,7 +35,7 @@ export default function RequestQuotePage() {
     setMessage({ state: "sending", text: "Sending your request..." });
 
     try {
-      const response = await fetch(WEBHOOK_URL, {
+      const response = await fetch(API_ROUTE, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -45,7 +44,10 @@ export default function RequestQuotePage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Webhook returned ${response.status}`);
+        const { message: errorMessage } = await response.json().catch(() => ({
+          message: "Request failed",
+        }));
+        throw new Error(errorMessage || `Request failed with ${response.status}`);
       }
 
       setMessage({
@@ -58,7 +60,9 @@ export default function RequestQuotePage() {
       setMessage({
         state: "error",
         text:
-          "Something went wrong while sending your request. Please try again in a moment.",
+          error instanceof Error && error.message
+            ? error.message
+            : "Something went wrong while sending your request. Please try again in a moment.",
       });
     }
   }
