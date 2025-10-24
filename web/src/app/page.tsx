@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
 
 type Feature = {
   name: string;
@@ -103,6 +104,8 @@ export default function LandingPage() {
             <FeatureCard key={feature.name} feature={feature} />
           ))}
         </section>
+
+        <RecentMakeoversStrip className="mt-4" />
 
         <section className="rounded-[2.5rem] border border-white/10 bg-white/[0.03] p-10 text-slate-200 ring-1 ring-white/10 md:p-14">
           <div className="grid gap-8 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:items-center">

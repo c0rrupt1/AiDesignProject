@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
 
 const API_ROUTE = "/api/request";
 
@@ -268,6 +269,8 @@ export default function RequestQuotePage() {
             </Link>
           </div>
         </section>
+
+        <RecentMakeoversStrip className="mt-10" title="Saved makeovers ready to share" />
       </main>
     </div>
   );

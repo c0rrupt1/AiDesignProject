@@ -20,20 +20,9 @@ import {
   dataUrlToFile,
   fileToDataUrl,
 } from "@/components/workspace/utils";
+import { useGeneratedImages } from "@/components/providers/GeneratedImagesProvider";
+import type { GeneratedImage } from "@/components/providers/GeneratedImagesProvider";
 
-
-type GeneratedImage = {
-  url: string;
-  createdAt: number;
-  prompt: string;
-  sourceImage: string;
-  modelId: string;
-  negativePrompt: string | null;
-  guidanceScale: number;
-  strength: number;
-  inferenceSteps: number;
-  seed: string | null;
-};
 
 type KeywordTarget = "original" | number;
 
@@ -69,6 +58,7 @@ const isAbortError = (error: unknown) =>
   error instanceof Error && error.name === "AbortError";
 
 export default function WorkspacePage() {
+  const { results, setResults } = useGeneratedImages();
   const [prompt, setPrompt] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -80,7 +70,6 @@ export default function WorkspacePage() {
   const [inferenceSteps, setInferenceSteps] = useState(35);
   const [seed, setSeed] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [results, setResults] = useState<GeneratedImage[]>([]);
   const [keywordTarget, setKeywordTarget] =
     useState<KeywordTarget>("original");
   const [shoppingKeywords, setShoppingKeywords] = useState("");
