@@ -9,9 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type RouteContext = {
-  params: {
-    code: string;
-  };
+  params: Promise<{ code: string }> | { code: string };
 };
 
 export async function GET(_request: Request, context: RouteContext) {
@@ -25,7 +23,9 @@ export async function GET(_request: Request, context: RouteContext) {
     );
   }
 
-  const rawCode = context.params.code ?? "";
+  const params = await context.params;
+
+  const rawCode = params.code ?? "";
   const normalizedCode = rawCode.trim();
 
   if (!normalizedCode) {
