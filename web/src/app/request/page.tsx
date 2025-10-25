@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
+import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
+import { useGeneratedImages } from "@/components/providers/GeneratedImagesProvider";
 
 const API_ROUTE = "/api/request";
 
@@ -22,7 +24,16 @@ const inputClassName =
   "mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none ring-amber-500 transition focus:ring-2";
 
 export default function RequestQuotePage() {
+  const { projectCode, sessionId } = useGeneratedImages();
   const [message, setMessage] = useState<SubmissionMessage>(initialMessage);
+  const normalizedProjectCode = useMemo(
+    () => projectCode.trim(),
+    [projectCode],
+  );
+  const normalizedSessionId = useMemo(
+    () => sessionId.trim(),
+    [sessionId],
+  );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,6 +62,17 @@ export default function RequestQuotePage() {
       email: trimmed.email,
       ...(trimmed.phone ? { phone: trimmed.phone } : {}),
       ...(trimmed.description ? { description: trimmed.description } : {}),
+      ...(normalizedProjectCode
+        ? {
+            projectCode: normalizedProjectCode,
+            code: normalizedProjectCode,
+          }
+        : {}),
+      ...(normalizedSessionId
+        ? {
+            sessionId: normalizedSessionId,
+          }
+        : {}),
     };
 
     setMessage({ state: "sending", text: "Sending your request..." });
@@ -133,6 +155,11 @@ export default function RequestQuotePage() {
               Capture the essentials—space name, key contacts, and design goals—so we can jump into the
               workspace knowing exactly what success looks like.
             </p>
+            {normalizedProjectCode && (
+              <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
+                Workspace code: {normalizedProjectCode}
+              </p>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -269,6 +296,8 @@ export default function RequestQuotePage() {
             </Link>
           </div>
         </section>
+
+        <ProjectCodePanel className="mt-10" />
 
         <RecentMakeoversStrip className="mt-10" title="Saved makeovers ready to share" />
       </main>

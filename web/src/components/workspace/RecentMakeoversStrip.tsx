@@ -12,13 +12,16 @@ export function RecentMakeoversStrip({
   title = "Recent makeovers",
   className = "",
 }: RecentMakeoversStripProps) {
-  const { results } = useGeneratedImages();
+  const { results, projectCode } = useGeneratedImages();
 
   if (!results || results.length === 0) {
     return null;
   }
 
   const latest = results.slice(0, 4);
+  const heading = projectCode.trim()
+    ? `${title} · ${projectCode.trim()}`
+    : title;
 
   return (
     <section
@@ -29,7 +32,7 @@ export function RecentMakeoversStrip({
           <p className="text-xs font-semibold uppercase tracking-[0.45em] text-amber-200">
             Saved this session
           </p>
-          <h2 className="text-lg font-semibold text-slate-50">{title}</h2>
+          <h2 className="text-lg font-semibold text-slate-50">{heading}</h2>
         </div>
         <Link
           href="/workspace"

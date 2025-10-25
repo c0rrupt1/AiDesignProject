@@ -22,6 +22,7 @@ import {
 } from "@/components/workspace/utils";
 import { useGeneratedImages } from "@/components/providers/GeneratedImagesProvider";
 import type { GeneratedImage } from "@/components/providers/GeneratedImagesProvider";
+import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
 
 
 type KeywordTarget = "original" | number;
@@ -57,8 +58,33 @@ const defaultModelId =
 const isAbortError = (error: unknown) =>
   error instanceof Error && error.name === "AbortError";
 
+type EditBlobSummary = {
+  pathname: string;
+  url: string;
+  downloadUrl: string | null;
+  contentType: string | null;
+};
+
+type EditResponse = {
+  image?: string;
+  blobs?: {
+    sessionPath: string;
+    input?: EditBlobSummary | null;
+    mask?: EditBlobSummary | null;
+    output?: EditBlobSummary | null;
+    metadata?: EditBlobSummary | null;
+    details?: Record<string, unknown> | null;
+  } | null;
+};
+
 export default function WorkspacePage() {
-  const { results, setResults } = useGeneratedImages();
+  const {
+    results,
+    setResults,
+    projectCode,
+    sessionId,
+    regenerateSessionId,
+  } = useGeneratedImages();
   const [prompt, setPrompt] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -121,6 +147,8 @@ export default function WorkspacePage() {
   const shoppingControllerRef = useRef<AbortController | null>(null);
   const clipControllerRef = useRef<AbortController | null>(null);
   const smartRedoControllerRef = useRef<AbortController | null>(null);
+  const normalizedProjectCode = projectCode.trim();
+  const normalizedSessionId = sessionId.trim();
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -598,6 +626,7 @@ export default function WorkspacePage() {
       return;
     }
 
+    const activeSessionId = normalizedSessionId || regenerateSessionId();
     const baseImageDataUrl = await fileToDataUrl(imageFile);
     const trimmedNegativePrompt = negativePrompt.trim();
     const trimmedSeed = seed.trim();
@@ -608,6 +637,13 @@ export default function WorkspacePage() {
     formData.append("guidanceScale", guidanceScale.toString());
     formData.append("strength", strength.toString());
     formData.append("inferenceSteps", inferenceSteps.toString());
+    formData.append("persistToBlob", "true");
+    if (normalizedProjectCode) {
+      formData.append("projectCode", normalizedProjectCode);
+    }
+    if (activeSessionId) {
+      formData.append("sessionId", activeSessionId);
+    }
     if (trimmedNegativePrompt) {
       formData.append("negativePrompt", trimmedNegativePrompt);
     }
@@ -707,7 +743,7 @@ export default function WorkspacePage() {
     editControllerRef.current = controller;
 
     try {
-      const payload = await fetchJson<{ image?: string }>(
+      const payload = await fetchJson<EditResponse>(
         "/api/edit",
         {
           method: "POST",
@@ -717,6 +753,33 @@ export default function WorkspacePage() {
       );
 
       const imageData = payload?.image;
+      const blobs = payload?.blobs ?? null;
+      const blobDetails =
+        blobs && typeof blobs.details === "object" && blobs.details !== null
+          ? (blobs.details as Record<string, unknown>)
+          : null;
+      const persistedProjectCode =
+        blobDetails && typeof blobDetails.projectCode === "string"
+          ? blobDetails.projectCode
+          : result.projectCode && result.projectCode.trim()
+            ? result.projectCode.trim()
+            : normalizedProjectCode || null;
+      const persistedSessionId =
+        blobDetails && typeof blobDetails.sessionId === "string"
+          ? blobDetails.sessionId
+          : redoSessionId || null;
+      const blobDetails =
+        blobs && typeof blobs.details === "object" && blobs.details !== null
+          ? (blobs.details as Record<string, unknown>)
+          : null;
+      const persistedProjectCode =
+        blobDetails && typeof blobDetails.projectCode === "string"
+          ? blobDetails.projectCode
+          : normalizedProjectCode || null;
+      const persistedSessionId =
+        blobDetails && typeof blobDetails.sessionId === "string"
+          ? blobDetails.sessionId
+          : activeSessionId || null;
 
       if (!imageData) {
         throw new Error("The AI service returned an unexpected response.");
@@ -734,6 +797,17 @@ export default function WorkspacePage() {
         strength,
         inferenceSteps,
         seed: trimmedSeed || null,
+        projectCode: persistedProjectCode,
+        sessionId: persistedSessionId,
+        isPersisted: Boolean(blobs?.output),
+        blobPath: blobs?.output?.pathname ?? null,
+        blobUrl: blobs?.output?.url ?? null,
+        metadataUrl:
+          blobs?.metadata?.url ??
+          blobs?.metadata?.downloadUrl ??
+          null,
+        sourceBlobPath: blobs?.input?.pathname ?? null,
+        sourceBlobUrl: blobs?.input?.url ?? null,
       };
 
       setResults((history) => [newResult, ...history]);
@@ -801,6 +875,18 @@ export default function WorkspacePage() {
     formData.append("guidanceScale", result.guidanceScale.toString());
     formData.append("strength", result.strength.toString());
     formData.append("inferenceSteps", result.inferenceSteps.toString());
+    formData.append("persistToBlob", "true");
+    const redoSessionId = result.sessionId && result.sessionId.trim()
+      ? result.sessionId.trim()
+      : normalizedSessionId || regenerateSessionId();
+    if (result.projectCode && result.projectCode.trim()) {
+      formData.append("projectCode", result.projectCode.trim());
+    } else if (normalizedProjectCode) {
+      formData.append("projectCode", normalizedProjectCode);
+    }
+    if (redoSessionId) {
+      formData.append("sessionId", redoSessionId);
+    }
     if (result.negativePrompt) {
       formData.append("negativePrompt", result.negativePrompt);
     }
@@ -813,7 +899,7 @@ export default function WorkspacePage() {
     smartRedoControllerRef.current = controller;
 
     try {
-      const payload = await fetchJson<{ image?: string }>(
+      const payload = await fetchJson<EditResponse>(
         "/api/edit",
         {
           method: "POST",
@@ -823,6 +909,7 @@ export default function WorkspacePage() {
       );
 
       const imageData = payload?.image;
+      const blobs = payload?.blobs ?? null;
       if (!imageData) {
         throw new Error("The AI service returned an unexpected response.");
       }
@@ -839,6 +926,17 @@ export default function WorkspacePage() {
         strength: result.strength,
         inferenceSteps: result.inferenceSteps,
         seed: result.seed,
+        projectCode: persistedProjectCode,
+        sessionId: persistedSessionId,
+        isPersisted: Boolean(blobs?.output),
+        blobPath: blobs?.output?.pathname ?? null,
+        blobUrl: blobs?.output?.url ?? null,
+        metadataUrl:
+          blobs?.metadata?.url ??
+          blobs?.metadata?.downloadUrl ??
+          null,
+        sourceBlobPath: blobs?.input?.pathname ?? result.sourceBlobPath ?? null,
+        sourceBlobUrl: blobs?.input?.url ?? result.sourceBlobUrl ?? null,
       };
 
       setResults((history) => [newResult, ...history]);
@@ -1347,6 +1445,7 @@ export default function WorkspacePage() {
       </header>
       <main className="relative mx-auto max-w-6xl px-6 pb-24 pt-16 md:px-10">
         <HeroSection />
+        <ProjectCodePanel className="mt-10" />
         <section className="mt-14 grid gap-10 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)] lg:items-start">
           <div className="space-y-10">
             <form
@@ -1366,6 +1465,11 @@ export default function WorkspacePage() {
                       <p className="text-sm text-slate-400">
                         Paint focus areas and drop in optional reference objects. The preview now spans the card so you can judge scale and lighting.
                       </p>
+                      {normalizedProjectCode && (
+                        <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
+                          Workspace code: {normalizedProjectCode}
+                        </p>
+                      )}
                     </div>
                     {imageFile && (
                       <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
@@ -1879,6 +1983,11 @@ export default function WorkspacePage() {
                             <p className="text-xs text-slate-500">
                               Saved at {new Date(result.createdAt).toLocaleTimeString()} · Model: {displayModelId}
                             </p>
+                            {result.isPersisted && (
+                              <p className="text-[0.68rem] text-emerald-300">
+                                Synced to blob {result.projectCode ?? normalizedProjectCode ?? ""}
+                              </p>
+                            )}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                             <button
@@ -1940,6 +2049,40 @@ export default function WorkspacePage() {
                                   )}
                                 </button>
                               </div>
+                            </div>
+                            )}
+                          {(result.blobUrl || result.metadataUrl || result.sourceBlobUrl) && (
+                            <div className="flex flex-wrap gap-3 text-[0.68rem] text-amber-200">
+                              {result.blobUrl && (
+                                <a
+                                  href={result.blobUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline decoration-dotted underline-offset-2 hover:text-amber-100"
+                                >
+                                  View image blob
+                                </a>
+                              )}
+                              {result.metadataUrl && (
+                                <a
+                                  href={result.metadataUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline decoration-dotted underline-offset-2 hover:text-amber-100"
+                                >
+                                  Metadata
+                                </a>
+                              )}
+                              {result.sourceBlobUrl && (
+                                <a
+                                  href={result.sourceBlobUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline decoration-dotted underline-offset-2 hover:text-amber-100"
+                                >
+                                  Original photo
+                                </a>
+                              )}
                             </div>
                           )}
                         </div>

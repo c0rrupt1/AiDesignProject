@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
+import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
 
 type Feature = {
   name: string;
@@ -104,6 +105,8 @@ export default function LandingPage() {
             <FeatureCard key={feature.name} feature={feature} />
           ))}
         </section>
+
+        <ProjectCodePanel className="mt-4" />
 
         <RecentMakeoversStrip className="mt-4" />
 

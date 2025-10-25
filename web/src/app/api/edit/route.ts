@@ -89,6 +89,25 @@ export async function POST(request: Request) {
   const insertYInput = formData.get("insertY");
   const insertWidthInput = formData.get("insertWidth");
   const insertHeightInput = formData.get("insertHeight");
+  const persistToBlobRaw = formData.get("persistToBlob");
+  const projectCodeRaw = formData.get("projectCode");
+  const sessionIdRaw = formData.get("sessionId");
+
+  const projectCodeForBlob =
+    typeof projectCodeRaw === "string" && projectCodeRaw.trim()
+      ? projectCodeRaw.trim()
+      : null;
+  const sessionIdForBlob =
+    typeof sessionIdRaw === "string" && sessionIdRaw.trim()
+      ? sessionIdRaw.trim()
+      : null;
+
+  const persistToBlob =
+    typeof persistToBlobRaw === "string"
+      ? ["true", "1", "yes", "on"].includes(
+          persistToBlobRaw.toLowerCase().trim(),
+        )
+      : Boolean(projectCodeForBlob || sessionIdForBlob);
 
   if (typeof prompt !== "string" || !prompt.trim()) {
     return NextResponse.json(
@@ -565,16 +584,28 @@ export async function POST(request: Request) {
         ? insertPlacement.normalized
         : null,
       insertPlacementPixels: insertPlacement ? insertPlacement.pixels : null,
+      projectCode: projectCodeForBlob,
+      projectCodeOriginal: projectCodeForBlob,
+      sessionId: sessionIdForBlob,
+      sessionIdOriginal: sessionIdForBlob,
     };
 
-    const blobDocumentation = await documentImagesToBlob({
-      input: { buffer: imageBuffer, contentType },
-      mask: maskBuffer
-        ? { buffer: maskBuffer, contentType: "image/png" }
-        : undefined,
-      output: { buffer: finalBuffer, contentType: "image/png" },
-      metadata: metadataDetails,
-    });
+    const artifactBaseName = `makeover-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+
+    const blobDocumentation =
+      persistToBlob && blobUploadsEnabled
+        ? await documentImagesToBlob({
+            input: { buffer: imageBuffer, contentType },
+            mask: maskBuffer
+              ? { buffer: maskBuffer, contentType: "image/png" }
+              : undefined,
+            output: { buffer: finalBuffer, contentType: "image/png" },
+            metadata: metadataDetails,
+            projectCode: projectCodeForBlob,
+            sessionId: sessionIdForBlob,
+            artifactBaseName,
+          })
+        : null;
 
     return NextResponse.json({
       image: `data:image/png;base64,${finalBuffer.toString("base64")}`,
@@ -721,23 +752,41 @@ async function documentImagesToBlob({
   mask,
   output,
   metadata,
+  projectCode,
+  sessionId,
+  artifactBaseName,
 }: {
   input: { buffer: Buffer; contentType: string };
   mask?: { buffer: Buffer; contentType: string };
   output: { buffer: Buffer; contentType: string };
   metadata?: Record<string, unknown>;
+  projectCode?: string | null;
+  sessionId?: string | null;
+  artifactBaseName?: string;
 }): Promise<BlobDocumentation | null> {
   if (!blobUploadsEnabled) {
     return null;
   }
 
+  const sanitizedProjectCode = projectCode
+    ? sanitizePathSegment(projectCode)
+    : null;
+  const sanitizedSessionId = sessionId
+    ? sanitizePathSegment(sessionId)
+    : null;
+
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const sessionId = randomUUID();
+  const fallbackSessionId = randomUUID();
   const segments = [blobFolderPrefix];
   if (blobStoreId) {
     segments.push(blobStoreId);
   }
-  segments.push(`${timestamp}-${sessionId}`);
+  if (sanitizedProjectCode) {
+    segments.push("projects");
+    segments.push(sanitizedProjectCode);
+  }
+  segments.push("sessions");
+  segments.push(sanitizedSessionId ?? fallbackSessionId);
   const sessionPath = segments.filter(Boolean).join("/");
 
   const uploads: Array<Promise<void>> = [];
@@ -746,25 +795,45 @@ async function documentImagesToBlob({
     sessionPath,
   };
 
-  const enrichedMetadata =
-    metadata !== undefined
-      ? {
-          ...metadata,
-          sessionPath,
-          sessionId,
-          timestamp,
-        }
-      : undefined;
+  const metadataRecord =
+    metadata && typeof metadata === "object"
+      ? (metadata as Record<string, unknown>)
+      : null;
+
+  const enrichedMetadata = metadataRecord
+    ? {
+        ...metadataRecord,
+        sessionPath,
+        sessionIdOriginal:
+          typeof metadataRecord.sessionId === "string"
+            ? metadataRecord.sessionId
+            : sessionId ?? null,
+        sessionId: sanitizedSessionId ?? fallbackSessionId,
+        timestamp,
+        projectCodeOriginal:
+          typeof metadataRecord.projectCode === "string"
+            ? metadataRecord.projectCode
+            : projectCode ?? null,
+        projectCode: sanitizedProjectCode,
+      }
+    : undefined;
 
   if (enrichedMetadata) {
     documentation.details = enrichedMetadata;
   }
 
+  const baseName = sanitizePathSegment(
+    artifactBaseName && artifactBaseName.trim().length > 0
+      ? artifactBaseName
+      : `artifact-${timestamp}`,
+  );
+
   uploads.push(
     uploadToBlob(
-      `${sessionPath}/input${extensionFromContentType(input.contentType)}`,
+      `${sessionPath}/${baseName}-input${extensionFromContentType(input.contentType)}`,
       input.buffer,
       input.contentType,
+      { allowOverwrite: false },
     ).then((result) => {
       documentation.input = result;
     }),
@@ -773,20 +842,22 @@ async function documentImagesToBlob({
   if (mask) {
     uploads.push(
       uploadToBlob(
-        `${sessionPath}/mask${extensionFromContentType(mask.contentType)}`,
-        mask.buffer,
-        mask.contentType,
-      ).then((result) => {
-        documentation.mask = result;
-      }),
-    );
+      `${sessionPath}/${baseName}-mask${extensionFromContentType(mask.contentType)}`,
+      mask.buffer,
+      mask.contentType,
+      { allowOverwrite: false },
+    ).then((result) => {
+      documentation.mask = result;
+    }),
+  );
   }
 
   uploads.push(
     uploadToBlob(
-      `${sessionPath}/output${extensionFromContentType(output.contentType)}`,
+      `${sessionPath}/${baseName}-output${extensionFromContentType(output.contentType)}`,
       output.buffer,
       output.contentType,
+      { allowOverwrite: false },
     ).then((result) => {
       documentation.output = result;
     }),
@@ -798,13 +869,14 @@ async function documentImagesToBlob({
     );
     uploads.push(
       uploadToBlob(
-        `${sessionPath}/metadata.json`,
-        metadataBuffer,
-        "application/json",
-      ).then((result) => {
-        documentation.metadata = result;
-      }),
-    );
+      `${sessionPath}/${baseName}-metadata.json`,
+      metadataBuffer,
+      "application/json",
+      { allowOverwrite: false },
+    ).then((result) => {
+      documentation.metadata = result;
+    }),
+  );
   }
 
   await Promise.all(uploads);
@@ -816,13 +888,14 @@ async function uploadToBlob(
   pathname: string,
   data: Buffer,
   contentType: string,
+  options: { allowOverwrite?: boolean } = {},
 ): Promise<BlobSummary | null> {
   try {
     const result = await put(pathname, data, {
       access: "public",
       contentType,
       addRandomSuffix: false,
-      allowOverwrite: false,
+      allowOverwrite: options.allowOverwrite ?? false,
       token: blobToken ?? undefined,
     });
 
@@ -861,4 +934,14 @@ function extensionFromContentType(
     return `.${match[1]}`;
   }
   return ".png";
+}
+
+function sanitizePathSegment(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
 }

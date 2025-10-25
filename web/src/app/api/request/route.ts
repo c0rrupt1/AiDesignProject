@@ -31,7 +31,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const { name, customerName, email, phone, description } = payload as Record<
+  const {
+    name,
+    customerName,
+    email,
+    phone,
+    description,
+    projectCode: projectCodeValue,
+    code,
+    sessionId: sessionIdValue,
+  } = payload as Record<
     string,
     unknown
   >;
@@ -55,6 +64,14 @@ export async function POST(request: Request) {
   const trimmedDescription = isNonEmptyString(description)
     ? description.trim()
     : "";
+  const trimmedProjectCode = isNonEmptyString(projectCodeValue)
+    ? projectCodeValue.trim()
+    : isNonEmptyString(code)
+      ? code.trim()
+      : "";
+  const trimmedSessionId = isNonEmptyString(sessionIdValue)
+    ? sessionIdValue.trim()
+    : "";
 
   const sanitizedPayload: Record<string, string> = {
     name: trimmedName,
@@ -69,6 +86,20 @@ export async function POST(request: Request) {
     submittedAt: new Date().toISOString(),
     source: "website-request-form",
   };
+
+  if (trimmedProjectCode) {
+    sanitizedPayload.projectCode = trimmedProjectCode;
+    sanitizedPayload.ProjectCode = trimmedProjectCode;
+    sanitizedPayload.code = trimmedProjectCode;
+    sanitizedPayload.Code = trimmedProjectCode;
+    sanitizedPayload.publicCode = trimmedProjectCode;
+    sanitizedPayload.PublicCode = trimmedProjectCode;
+  }
+
+  if (trimmedSessionId) {
+    sanitizedPayload.sessionId = trimmedSessionId;
+    sanitizedPayload.SessionId = trimmedSessionId;
+  }
 
   if (trimmedPhone) {
     sanitizedPayload.phone = trimmedPhone;

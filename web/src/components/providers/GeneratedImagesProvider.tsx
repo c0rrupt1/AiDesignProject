@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -23,18 +24,54 @@ export type GeneratedImage = {
   strength: number;
   inferenceSteps: number;
   seed: string | null;
+  isPersisted?: boolean;
+  blobPath?: string | null;
+  blobUrl?: string | null;
+  metadataUrl?: string | null;
+  projectCode?: string | null;
+  sourceBlobPath?: string | null;
+  sourceBlobUrl?: string | null;
+  sessionId?: string | null;
 };
 
 type GeneratedImagesContextValue = {
   results: GeneratedImage[];
   setResults: Dispatch<SetStateAction<GeneratedImage[]>>;
   clearResults: () => void;
+  projectCode: string;
+  setProjectCode: (value: string) => void;
+  regenerateProjectCode: () => string;
+  sessionId: string;
+  regenerateSessionId: () => string;
 };
 
 const GeneratedImagesContext =
   createContext<GeneratedImagesContextValue | null>(null);
 
 const STORAGE_KEY = "generated-images-history";
+const STORAGE_CODE_KEY = "generated-images-project-code";
+const STORAGE_SESSION_KEY = "generated-images-session-id";
+
+const CODE_PREFIX = "HS";
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function generateProjectCode(): string {
+  const randomSegment = Array.from({ length: 8 }, () =>
+    CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)],
+  ).join("");
+  const date = new Date();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${CODE_PREFIX}-${month}${day}-${randomSegment}`;
+}
+
+function generateSessionId(): string {
+  const timeComponent = Date.now().toString(36);
+  const randomComponent = Array.from({ length: 6 }, () =>
+    CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)],
+  ).join("");
+  return `${timeComponent}-${randomComponent}`.toLowerCase();
+}
 
 export function GeneratedImagesProvider({
   children,
@@ -43,6 +80,10 @@ export function GeneratedImagesProvider({
 }) {
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [projectCode, setProjectCodeState] = useState<string>("");
+  const hasLoadedProjectCode = useRef(false);
+  const [sessionId, setSessionIdState] = useState<string>("");
+  const hasLoadedSession = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -87,6 +128,90 @@ export function GeneratedImagesProvider({
     }
   }, [results, isInitialized]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || hasLoadedProjectCode.current) {
+      return;
+    }
+
+    hasLoadedProjectCode.current = true;
+
+    try {
+      const stored = window.localStorage.getItem(STORAGE_CODE_KEY)?.trim();
+      if (stored) {
+        setProjectCodeState(stored);
+      } else {
+        const generated = generateProjectCode();
+        setProjectCodeState(generated);
+        window.localStorage.setItem(STORAGE_CODE_KEY, generated);
+      }
+    } catch (error) {
+      console.warn("Failed to load project code", error);
+      const generated = generateProjectCode();
+      setProjectCodeState(generated);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasLoadedProjectCode.current) {
+      return;
+    }
+
+    const trimmed = projectCode.trim();
+    if (!trimmed) {
+      const generated = generateProjectCode();
+      setProjectCodeState(generated);
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(STORAGE_CODE_KEY, trimmed);
+    } catch (error) {
+      console.warn("Failed to persist project code", error);
+    }
+  }, [projectCode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || hasLoadedSession.current) {
+      return;
+    }
+
+    hasLoadedSession.current = true;
+
+    try {
+      const stored = window.localStorage.getItem(STORAGE_SESSION_KEY)?.trim();
+      if (stored) {
+        setSessionIdState(stored);
+      } else {
+        const generated = generateSessionId();
+        setSessionIdState(generated);
+        window.localStorage.setItem(STORAGE_SESSION_KEY, generated);
+      }
+    } catch (error) {
+      console.warn("Failed to load generation session id", error);
+      const generated = generateSessionId();
+      setSessionIdState(generated);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasLoadedSession.current) {
+      return;
+    }
+
+    const trimmed = sessionId.trim();
+    if (!trimmed) {
+      const generated = generateSessionId();
+      setSessionIdState(generated);
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(STORAGE_SESSION_KEY, trimmed);
+    } catch (error) {
+      console.warn("Failed to persist generation session id", error);
+    }
+  }, [sessionId]);
+
   const clearResults = useCallback(() => {
     setResults([]);
     if (typeof window !== "undefined") {
@@ -94,13 +219,43 @@ export function GeneratedImagesProvider({
     }
   }, []);
 
+  const setProjectCode = useCallback((value: string) => {
+    setProjectCodeState(value.trim());
+  }, []);
+
+  const regenerateProjectCode = useCallback(() => {
+    const next = generateProjectCode();
+    setProjectCodeState(next);
+    setSessionIdState(generateSessionId());
+    return next;
+  }, []);
+
+  const regenerateSessionId = useCallback(() => {
+    const next = generateSessionId();
+    setSessionIdState(next);
+    return next;
+  }, []);
+
   const value = useMemo<GeneratedImagesContextValue>(
     () => ({
       results,
       setResults,
       clearResults,
+      projectCode,
+      setProjectCode,
+      regenerateProjectCode,
+      sessionId,
+      regenerateSessionId,
     }),
-    [results, clearResults],
+    [
+      results,
+      clearResults,
+      projectCode,
+      setProjectCode,
+      regenerateProjectCode,
+      sessionId,
+      regenerateSessionId,
+    ],
   );
 
   return (
@@ -127,7 +282,7 @@ function isGeneratedImageCandidate(value: unknown): value is GeneratedImage {
 
   const candidate = value as Record<string, unknown>;
 
-  return (
+  const hasRequiredBasics =
     typeof candidate.url === "string" &&
     typeof candidate.createdAt === "number" &&
     typeof candidate.prompt === "string" &&
@@ -135,13 +290,26 @@ function isGeneratedImageCandidate(value: unknown): value is GeneratedImage {
     typeof candidate.modelId === "string" &&
     typeof candidate.guidanceScale === "number" &&
     typeof candidate.strength === "number" &&
-    typeof candidate.inferenceSteps === "number" &&
-    ("negativePrompt" in candidate
-      ? candidate.negativePrompt === null ||
-        typeof candidate.negativePrompt === "string"
-      : true) &&
-    ("seed" in candidate
-      ? candidate.seed === null || typeof candidate.seed === "string"
-      : true)
-  );
+    typeof candidate.inferenceSteps === "number";
+
+  if (!hasRequiredBasics) {
+    return false;
+  }
+
+  const negativePrompt = candidate.negativePrompt;
+  const seed = candidate.seed;
+
+  if (
+    negativePrompt !== undefined &&
+    negativePrompt !== null &&
+    typeof negativePrompt !== "string"
+  ) {
+    return false;
+  }
+
+  if (seed !== undefined && seed !== null && typeof seed !== "string") {
+    return false;
+  }
+
+  return true;
 }
