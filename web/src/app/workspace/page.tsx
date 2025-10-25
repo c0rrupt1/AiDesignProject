@@ -761,20 +761,6 @@ export default function WorkspacePage() {
       const persistedProjectCode =
         blobDetails && typeof blobDetails.projectCode === "string"
           ? blobDetails.projectCode
-          : result.projectCode && result.projectCode.trim()
-            ? result.projectCode.trim()
-            : normalizedProjectCode || null;
-      const persistedSessionId =
-        blobDetails && typeof blobDetails.sessionId === "string"
-          ? blobDetails.sessionId
-          : redoSessionId || null;
-      const blobDetails =
-        blobs && typeof blobs.details === "object" && blobs.details !== null
-          ? (blobs.details as Record<string, unknown>)
-          : null;
-      const persistedProjectCode =
-        blobDetails && typeof blobDetails.projectCode === "string"
-          ? blobDetails.projectCode
           : normalizedProjectCode || null;
       const persistedSessionId =
         blobDetails && typeof blobDetails.sessionId === "string"
@@ -910,6 +896,20 @@ export default function WorkspacePage() {
 
       const imageData = payload?.image;
       const blobs = payload?.blobs ?? null;
+      const blobDetails =
+        blobs && typeof blobs.details === "object" && blobs.details !== null
+          ? (blobs.details as Record<string, unknown>)
+          : null;
+      const persistedProjectCode =
+        blobDetails && typeof blobDetails.projectCode === "string"
+          ? blobDetails.projectCode
+          : result.projectCode && result.projectCode.trim()
+            ? result.projectCode.trim()
+            : normalizedProjectCode || null;
+      const persistedSessionId =
+        blobDetails && typeof blobDetails.sessionId === "string"
+          ? blobDetails.sessionId
+          : redoSessionId || null;
       if (!imageData) {
         throw new Error("The AI service returned an unexpected response.");
       }
