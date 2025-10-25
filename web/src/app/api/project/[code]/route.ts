@@ -12,7 +12,7 @@ type RouteParams = Record<string, string | string[] | undefined>;
 
 export async function GET(
   _request: Request,
-  context: { params: Promise<RouteParams> | RouteParams },
+  context: { params: Promise<RouteParams> },
 ) {
   if (!lookupBaseUrl) {
     return NextResponse.json(
@@ -24,7 +24,7 @@ export async function GET(
     );
   }
 
-  const resolvedParams = await Promise.resolve(context.params);
+  const resolvedParams = await context.params;
   const rawCodeCandidate = resolvedParams.code;
   const rawCode = Array.isArray(rawCodeCandidate)
     ? rawCodeCandidate[0] ?? ""
