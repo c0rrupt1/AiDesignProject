@@ -438,7 +438,7 @@ function parseProjectDetails(data: unknown): ProjectDetails | null {
     page = data.find(
       (item): item is Record<string, unknown> =>
         !!item && typeof item === "object" && "properties" in item,
-    ) as Record<string, unknown> | undefined | null;
+    ) ?? null;
   } else if (data && typeof data === "object" && "properties" in data) {
     page = data as Record<string, unknown>;
   } else if (data && typeof data === "object" && "data" in data) {
