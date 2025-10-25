@@ -8,11 +8,11 @@ const ALLOWED_CODE = /^[A-Za-z0-9._-]+$/;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type RouteParams = { code: string };
+type RouteParams = Record<string, string | string[] | undefined>;
 
 export async function GET(
   _request: Request,
-  { params }: { params: RouteParams },
+  context: { params?: Promise<RouteParams> | RouteParams },
 ) {
   if (!lookupBaseUrl) {
     return NextResponse.json(
@@ -24,9 +24,13 @@ export async function GET(
     );
   }
 
-  const resolvedParams = await Promise.resolve(params);
-
-  const rawCode = resolvedParams.code ?? "";
+  const resolvedParams = context.params
+    ? await Promise.resolve(context.params)
+    : null;
+  const rawCodeCandidate = resolvedParams?.code;
+  const rawCode = Array.isArray(rawCodeCandidate)
+    ? rawCodeCandidate[0] ?? ""
+    : rawCodeCandidate ?? "";
   const normalizedCode = rawCode.trim();
 
   if (!normalizedCode) {
