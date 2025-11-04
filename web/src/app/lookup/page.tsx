@@ -20,6 +20,10 @@ type ActionInfo = {
   invoiceUrl: string | null;
   canBook: boolean;
   squareUrl: string | null;
+  stripeCustomerId: string | null;
+  stripePortalUrl: string | null;
+  schedulerUrl: string | null;
+  projectCode: string | null;
 };
 
 type ProjectDetails = {
@@ -33,9 +37,12 @@ type ProjectDetails = {
   invoiceUrl: string | null;
   totalCostCents: number | null;
   paid: boolean | null;
-  notionUrl: string | null;
+  workspaceUrl: string | null;
   publicUrl: string | null;
   publicCode: string | null;
+  stripeCustomerId: string | null;
+  stripePortalUrl: string | null;
+  schedulerUrl: string | null;
 };
 
 export default function LookupPage() {
@@ -301,10 +308,10 @@ function ProjectSummary({ details }: { details: ProjectDetails }) {
           }
         />
         <SummaryCell
-          label="Notion page"
-          value={details.notionUrl}
-          href={details.notionUrl ?? undefined}
-          display="Open in Notion"
+          label="Workspace record"
+          value={details.workspaceUrl}
+          href={details.workspaceUrl ?? undefined}
+          display="Open record"
           fallback="—"
         />
         <SummaryCell
@@ -366,7 +373,135 @@ function SummaryCell({
 }
 
 function BookingAction({ info }: { info: ActionInfo }) {
-  if (info.canBook && info.squareUrl && info.invoiceId) {
+  const [isLaunchingPortal, setIsLaunchingPortal] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
+
+  const stripePortalUrl = info.stripePortalUrl ?? "";
+  const squareUrl = info.squareUrl ?? "";
+  const schedulerUrl = info.schedulerUrl ?? "";
+
+  const showStripeOptions = Boolean(info.stripeCustomerId || stripePortalUrl);
+  const showSquareFallback = Boolean(!showStripeOptions && squareUrl && info.invoiceId);
+  const showSchedulerLink = Boolean(schedulerUrl);
+
+  const handlePortalLaunch = async () => {
+    if (!info.stripeCustomerId && stripePortalUrl) {
+      window.open(stripePortalUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (!info.stripeCustomerId) {
+      return;
+    }
+
+    const payload: Record<string, string> = {
+      customerId: info.stripeCustomerId,
+    };
+
+    if (info.projectCode) {
+      payload.projectCode = info.projectCode;
+    }
+
+    if (typeof window !== "undefined" && window.location?.href) {
+      payload.returnUrl = window.location.href;
+    }
+
+    setPortalError(null);
+    setIsLaunchingPortal(true);
+
+    try {
+      const response = await fetch("/api/stripe/portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const errorMessage =
+          data &&
+          typeof data === "object" &&
+          "error" in data &&
+          typeof (data as Record<string, unknown>).error === "string"
+            ? ((data as Record<string, unknown>).error as string)
+            : "Stripe portal is unavailable right now. Try again soon.";
+        setPortalError(errorMessage);
+        return;
+      }
+
+      if (data && typeof data === "object" && typeof (data as Record<string, unknown>).url === "string") {
+        const target = (data as Record<string, unknown>).url as string;
+        if (target.trim()) {
+          window.location.href = target;
+          return;
+        }
+      }
+
+      setPortalError("Stripe portal responded without a URL. Try again shortly.");
+    } catch (error) {
+      console.error("Failed to open Stripe portal", error);
+      setPortalError("Unable to reach the Stripe portal. Give it another shot in a moment.");
+    } finally {
+      setIsLaunchingPortal(false);
+    }
+  };
+
+  if (info.canBook && showStripeOptions) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-emerald-400/60 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+        <p className="text-xs font-semibold uppercase tracking-[0.35em]">
+          Ready for checkout
+        </p>
+        <p>
+          Your project is marked as{" "}
+          <span className="font-semibold">
+            {info.statusName ?? "Returned to client"}
+          </span>
+          . Use the billing portal to review invoices, update payment methods, and reserve your next
+          session.
+        </p>
+        {portalError && (
+          <p className="rounded-xl border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+            {portalError}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-3">
+          {info.stripeCustomerId && (
+            <button
+              onClick={handlePortalLaunch}
+              disabled={isLaunchingPortal}
+              className="inline-flex items-center justify-center rounded-lg bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isLaunchingPortal ? "Opening portal…" : "Open billing portal"}
+            </button>
+          )}
+          {stripePortalUrl && (
+            <a
+              target="_blank"
+              rel="noreferrer"
+              href={stripePortalUrl}
+              className="inline-flex items-center justify-center rounded-lg border border-emerald-300/60 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-300/10"
+            >
+              Use saved portal link
+            </a>
+          )}
+          {showSchedulerLink && (
+            <a
+              target="_blank"
+              rel="noreferrer"
+              href={schedulerUrl}
+              className="inline-flex items-center justify-center rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Select appointment time
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (info.canBook && showSquareFallback) {
     return (
       <div className="space-y-3 rounded-2xl border border-emerald-400/60 bg-emerald-400/10 p-4 text-sm text-emerald-100">
         <p className="text-xs font-semibold uppercase tracking-[0.35em]">
@@ -374,31 +509,44 @@ function BookingAction({ info }: { info: ActionInfo }) {
         </p>
         <p>
           Your project is marked as <span className="font-semibold">Returned to client</span>. Finish
-          booking with Square using invoice <span className="font-mono">{info.invoiceId}</span>.
+          booking with Square using invoice{" "}
+          <span className="font-mono">{info.invoiceId}</span>.
         </p>
-        <a
-          target="_blank"
-          rel="noreferrer"
-          href={info.squareUrl}
-          style={{
-            backgroundColor: "#006aff",
-            border: "none",
-            color: "white",
-            height: "40px",
-            textTransform: "uppercase",
-            fontFamily: "'Square Market', sans-serif",
-            letterSpacing: "1px",
-            lineHeight: "38px",
-            padding: "0 28px",
-            borderRadius: "8px",
-            fontWeight: 500,
-            fontSize: "14px",
-            cursor: "pointer",
-            display: "inline-block",
-          }}
-        >
-          Book now
-        </a>
+        <div className="flex flex-wrap gap-3">
+          <a
+            target="_blank"
+            rel="noreferrer"
+            href={squareUrl}
+            style={{
+              backgroundColor: "#006aff",
+              border: "none",
+              color: "white",
+              height: "40px",
+              textTransform: "uppercase",
+              fontFamily: "'Square Market', sans-serif",
+              letterSpacing: "1px",
+              lineHeight: "38px",
+              padding: "0 28px",
+              borderRadius: "8px",
+              fontWeight: 500,
+              fontSize: "14px",
+              cursor: "pointer",
+              display: "inline-block",
+            }}
+          >
+            Book now
+          </a>
+          {showSchedulerLink && (
+            <a
+              target="_blank"
+              rel="noreferrer"
+              href={schedulerUrl}
+              className="inline-flex items-center justify-center rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Select appointment time
+            </a>
+          )}
+        </div>
       </div>
     );
   }
@@ -412,90 +560,118 @@ function BookingAction({ info }: { info: ActionInfo }) {
         {info.statusName
           ? `Current status: ${info.statusName}.`
           : "Your makeover isn’t marked as client-ready just yet."} We’ll deliver the next render set soon—scroll
-        down to revisit previous makeovers while you wait.
+        down to revisit previous makeovers while you wait. The billing portal unlocks automatically once
+        we mark your project as returned to client.
       </p>
     </div>
   );
 }
 
-function extractActionInfo(data: unknown): ActionInfo {
-  const details = parseProjectDetails(data);
-  if (!details) {
-    return {
-      statusName: null,
-      invoiceId: null,
-      invoiceUrl: null,
-      canBook: false,
-      squareUrl: null,
-    };
-  }
-  return buildActionInfo(details);
-}
-
 function parseProjectDetails(data: unknown): ProjectDetails | null {
-  let page: Record<string, unknown> | null = null;
-  if (Array.isArray(data)) {
-    page = data.find(
-      (item): item is Record<string, unknown> =>
-        !!item && typeof item === "object" && "properties" in item,
-    ) ?? null;
-  } else if (data && typeof data === "object" && "properties" in data) {
-    page = data as Record<string, unknown>;
-  } else if (data && typeof data === "object" && "data" in data) {
-    const inner = (data as Record<string, unknown>).data;
-    if (inner && typeof inner === "object" && "properties" in inner) {
-      page = inner as Record<string, unknown>;
-    }
-  }
+  const record = extractRecord(data);
+  if (!record) return null;
 
-  if (!page) return null;
-  const properties = findProperties(page);
-  if (!properties) return null;
+  const lookup = createLookup(record);
 
-  const title =
-    readTextValue(properties["Name"]) ??
-    readTextValue(properties["name"]) ??
-    null;
-  const customerName =
-    readTextValue(properties["Customer Name"]) ??
-    readTextValue(properties["customer_name"]) ??
-    null;
-  const email =
-    readEmailValue(properties["Email"]) ??
-    readEmailValue(properties["email"]) ??
-    null;
-  const phone =
-    readPhoneValue(properties["Phone"]) ??
-    readPhoneValue(properties["phone"]) ??
-    null;
-  const description =
-    readTextValue(properties["Description / Notes"]) ??
-    readTextValue(properties["description"]) ??
-    null;
-  const statusName =
-    readSelectName(properties["Public Status"]) ??
-    readSelectName(properties["public_status"]) ??
-    null;
-  const invoiceId =
-    readTextValue(properties["Square Invoice ID"]) ??
-    readTextValue(properties["square_invoice_id"]) ??
-    null;
-  const invoiceUrl =
-    readUrlValue(properties["Invoice URL"]) ??
-    readUrlValue(properties["invoice_url"]) ??
-    null;
-  const totalCostCents =
-    readNumberValue(properties["Total Cost (cents)"]) ??
-    readNumberValue(properties["total_cost"]) ??
-    null;
-  const paid =
-    readBooleanValue(properties["Paid?"]) ??
-    readBooleanValue(properties["paid"]) ??
-    null;
-  const publicCode =
-    readTextValue(properties["Public Code"]) ??
-    readTextValue(properties["public_code"]) ??
-    null;
+  const title = readString(lookup, [
+    "title",
+    "project title",
+    "project name",
+    "name",
+  ]);
+  const customerName = readString(lookup, [
+    "customer name",
+    "client name",
+    "client",
+    "customer",
+  ]);
+  const email = readString(lookup, [
+    "email",
+    "client email",
+    "customer email",
+    "contact email",
+  ]);
+  const phone = readString(lookup, [
+    "phone",
+    "phone number",
+    "client phone",
+    "customer phone",
+    "contact phone",
+  ]);
+  const description = readLongText(lookup, [
+    "description",
+    "project description",
+    "notes",
+    "summary",
+    "brief",
+  ]);
+  const statusName = readString(lookup, [
+    "status",
+    "status name",
+    "public status",
+    "project status",
+    "stage",
+  ]);
+  const invoiceId = readString(lookup, [
+    "invoice id",
+    "square invoice id",
+    "invoice reference",
+    "invoice number",
+  ]);
+  const invoiceUrl = readUrl(lookup, [
+    "invoice url",
+    "square invoice url",
+    "invoice link",
+  ]);
+  const totalCostCents = readMoneyCents(lookup, [
+    { keys: ["total cost (cents)", "total cost cents", "total_cost_cents", "quote (cents)", "quote cents"], unit: "cents" },
+    { keys: ["total cost", "project total", "quoted amount", "estimate"], unit: "dollars" },
+  ]);
+  const paid = readBoolean(lookup, [
+    "paid",
+    "payment complete",
+    "payment status",
+    "is paid",
+  ]);
+  const publicCode = readString(lookup, [
+    "public code",
+    "code",
+    "project code",
+    "client code",
+  ]);
+  const workspaceUrl = readUrl(lookup, [
+    "workspace url",
+    "record url",
+    "internal url",
+    "airtable url",
+    "dashboard url",
+    "url",
+  ]);
+  const publicUrl = readUrl(lookup, [
+    "public url",
+    "client url",
+    "share url",
+    "client page",
+    "public page",
+    "portal url",
+  ]);
+  const stripeCustomerId = readString(lookup, [
+    "stripe customer id",
+    "stripe_customer_id",
+    "customer id",
+  ]);
+  const stripePortalUrl = readUrl(lookup, [
+    "stripe portal url",
+    "billing portal url",
+    "portal link",
+  ]);
+  const schedulerUrl = readUrl(lookup, [
+    "scheduler url",
+    "scheduling url",
+    "booking link",
+    "appointment url",
+    "calendar url",
+  ]);
 
   return {
     title,
@@ -508,9 +684,12 @@ function parseProjectDetails(data: unknown): ProjectDetails | null {
     invoiceUrl,
     totalCostCents,
     paid,
-    notionUrl: typeof page.url === "string" ? page.url : null,
-    publicUrl: typeof page.public_url === "string" ? page.public_url : null,
+    workspaceUrl,
+    publicUrl,
     publicCode,
+    stripeCustomerId,
+    stripePortalUrl,
+    schedulerUrl,
   };
 }
 
@@ -518,13 +697,22 @@ function buildActionInfo(details: ProjectDetails): ActionInfo {
   const trimmedStatus = details.statusName?.trim() ?? null;
   const trimmedInvoice = details.invoiceId?.trim() ?? null;
   const trimmedInvoiceUrl = details.invoiceUrl?.trim() ?? null;
-  const isReturned =
-    trimmedStatus &&
-    trimmedStatus.toLowerCase() === "returned to client".toLowerCase();
-  const canBook = Boolean(isReturned && (trimmedInvoiceUrl || trimmedInvoice));
+  const trimmedCustomerId = details.stripeCustomerId?.trim() ?? null;
+  const trimmedPortalUrl = details.stripePortalUrl?.trim() ?? null;
+  const trimmedSchedulerUrl = details.schedulerUrl?.trim() ?? null;
+  const trimmedProjectCode = details.publicCode?.trim() ?? null;
+  const statusSlug = trimmedStatus?.toLowerCase();
+  const isReturned = statusSlug === "returned to client";
+
+  const hasStripePortal = Boolean(trimmedCustomerId || trimmedPortalUrl);
+  const hasInvoiceBooking = Boolean(trimmedInvoiceUrl || trimmedInvoice);
+  const canBook = Boolean(isReturned && (hasStripePortal || hasInvoiceBooking));
+
   let squareUrl: string | null = null;
-  if (canBook) {
-    squareUrl = trimmedInvoiceUrl ?? (trimmedInvoice ? buildSquareBookingUrl(trimmedInvoice) : null);
+  if (hasInvoiceBooking) {
+    squareUrl =
+      trimmedInvoiceUrl ??
+      (trimmedInvoice ? buildSquareBookingUrl(trimmedInvoice) : null);
   }
 
   return {
@@ -533,124 +721,187 @@ function buildActionInfo(details: ProjectDetails): ActionInfo {
     invoiceUrl: trimmedInvoiceUrl,
     canBook,
     squareUrl,
+    stripeCustomerId: trimmedCustomerId,
+    stripePortalUrl: trimmedPortalUrl,
+    schedulerUrl: trimmedSchedulerUrl,
+    projectCode: trimmedProjectCode,
   };
 }
 
-function findProperties(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  if (record.properties && typeof record.properties === "object") {
-    return record.properties as Record<string, unknown>;
+type FieldLookup = Map<string, unknown>;
+
+function parseCandidateKeys(key: string): string[] {
+  const normalized = key.trim().toLowerCase();
+  const compact = normalized.replace(/[^a-z0-9]/g, "");
+  return compact && compact !== normalized ? [normalized, compact] : [normalized];
+}
+
+function createLookup(record: Record<string, unknown>): FieldLookup {
+  const lookup: FieldLookup = new Map();
+  for (const [key, value] of Object.entries(record)) {
+    for (const variant of parseCandidateKeys(key)) {
+      if (!lookup.has(variant)) {
+        lookup.set(variant, value);
+      }
+    }
   }
-  if (record.data && typeof record.data === "object") {
-    const nested = (record.data as Record<string, unknown>).properties;
-    if (nested && typeof nested === "object") {
-      return nested as Record<string, unknown>;
+  return lookup;
+}
+
+function readString(lookup: FieldLookup, keys: string[]): string | null {
+  for (const key of keys) {
+    for (const variant of parseCandidateKeys(key)) {
+      if (!lookup.has(variant)) continue;
+      const found = coerceString(lookup.get(variant));
+      if (found) return found;
     }
   }
   return null;
 }
 
-function readSelectName(property: unknown): string | null {
-  if (!property || typeof property !== "object") return null;
-  const record = property as Record<string, unknown>;
-  if (record.select && typeof record.select === "object") {
-    const select = record.select as Record<string, unknown>;
-    if (typeof select.name === "string") return select.name;
-  }
-  if (record.type === "select" && typeof record.select === "object") {
-    const select = record.select as Record<string, unknown>;
-    if (typeof select.name === "string") return select.name;
+function readLongText(lookup: FieldLookup, keys: string[]): string | null {
+  const value = readString(lookup, keys);
+  return value ?? null;
+}
+
+function readUrl(lookup: FieldLookup, keys: string[]): string | null {
+  const value = readString(lookup, keys);
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  return trimmed;
+}
+
+type MoneyKeyDefinition = {
+  keys: string[];
+  unit: "cents" | "dollars";
+};
+
+function readMoneyCents(lookup: FieldLookup, definitions: MoneyKeyDefinition[]): number | null {
+  for (const { keys, unit } of definitions) {
+    for (const key of keys) {
+      for (const variant of parseCandidateKeys(key)) {
+        if (!lookup.has(variant)) continue;
+        const rawValue = lookup.get(variant);
+        const amount = coerceNumber(rawValue);
+        if (amount == null) continue;
+        return unit === "dollars" ? Math.round(amount * 100) : Math.round(amount);
+      }
+    }
   }
   return null;
 }
 
-function readTextValue(property: unknown): string | null {
-  if (property == null) return null;
-  if (typeof property === "string") return property.trim() || null;
-  if (Array.isArray(property)) {
-    for (const item of property) {
-      const value = readTextValue(item);
-      if (value) return value;
+function readBoolean(lookup: FieldLookup, keys: string[]): boolean | null {
+  for (const key of keys) {
+    for (const variant of parseCandidateKeys(key)) {
+      if (!lookup.has(variant)) continue;
+      const result = coerceBoolean(lookup.get(variant));
+      if (result !== null) return result;
+    }
+  }
+  return null;
+}
+
+function coerceString(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((entry) => coerceString(entry))
+      .filter((entry): entry is string => Boolean(entry));
+    return parts.length ? parts.join(", ") : null;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const candidates = ["text", "name", "value", "title", "label", "email", "url"];
+    for (const candidate of candidates) {
+      const raw = record[candidate];
+      if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        if (trimmed) return trimmed;
+      }
+    }
+  }
+  return null;
+}
+
+function coerceNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const sanitized = value.replace(/[^0-9.-]+/g, "");
+    if (!sanitized) return null;
+    const parsed = Number(sanitized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function coerceBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return null;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return null;
+    if (["true", "yes", "paid", "complete", "completed", "done", "1"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "no", "unpaid", "pending", "0"].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
+}
+
+function extractRecord(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const record = extractRecord(entry);
+      if (record) return record;
     }
     return null;
   }
+  if (typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
 
-  if (typeof property === "object") {
-    const record = property as Record<string, unknown>;
-    if (record.type === "rich_text" && Array.isArray(record.rich_text)) {
-      return readTextValue(record.rich_text);
-    }
-    if (record.type === "title" && Array.isArray(record.title)) {
-      return readTextValue(record.title);
-    }
-    if (Array.isArray(record.rich_text)) {
-      return readTextValue(record.rich_text);
-    }
-    if (Array.isArray(record.title)) {
-      return readTextValue(record.title);
-    }
-    if (typeof record.plain_text === "string") {
-      return record.plain_text.trim() || null;
-    }
-    if (typeof record.text === "string") {
-      return record.text.trim() || null;
-    }
-  }
-
-  return null;
-}
-
-function readEmailValue(property: unknown): string | null {
-  if (!property || typeof property !== "object") return null;
-  const record = property as Record<string, unknown>;
-  if (typeof record.email === "string") {
-    return record.email.trim() || null;
-  }
-  if (record.type === "email" && typeof record.email === "string") {
-    return record.email.trim() || null;
-  }
-  return readTextValue(property);
-}
-
-function readPhoneValue(property: unknown): string | null {
-  if (!property || typeof property !== "object") return null;
-  const record = property as Record<string, unknown>;
-  if (typeof record.phone_number === "string") {
-    return record.phone_number.trim() || null;
-  }
-  if (record.type === "phone_number" && typeof record.phone_number === "string") {
-    return record.phone_number.trim() || null;
-  }
-  return readTextValue(property);
-}
-
-function readNumberValue(property: unknown): number | null {
-  if (!property || typeof property !== "object") return null;
-  const record = property as Record<string, unknown>;
-  if (typeof record.number === "number") return record.number;
-  if (typeof record.value === "number") return record.value;
-  return null;
-}
-
-function readBooleanValue(property: unknown): boolean | null {
-  if (!property || typeof property !== "object") return null;
-  const record = property as Record<string, unknown>;
-  if (typeof record.checkbox === "boolean") return record.checkbox;
-  if (typeof record.bool === "boolean") return record.bool;
-  return null;
-}
-
-function readUrlValue(property: unknown): string | null {
-  if (!property) return null;
-  if (typeof property === "string") return property.trim() || null;
-  if (typeof property === "object") {
-    const record = property as Record<string, unknown>;
+  if (record.fields && typeof record.fields === "object") {
+    const fields = record.fields as Record<string, unknown>;
+    const merged: Record<string, unknown> = { ...fields };
     if (typeof record.url === "string") {
-      return record.url.trim() || null;
+      merged.url ??= record.url;
+      merged.workspaceUrl ??= record.url;
     }
+    if (typeof record.publicUrl === "string") {
+      merged.publicUrl ??= record.publicUrl;
+    }
+    if (typeof record.public_url === "string") {
+      merged.publicUrl ??= record.public_url;
+    }
+    if (typeof record.recordUrl === "string") {
+      merged.recordUrl ??= record.recordUrl;
+    }
+    return merged;
   }
-  return null;
+
+  if (record.data && typeof record.data === "object") {
+    return extractRecord(record.data);
+  }
+
+  return record;
 }
 
 function buildSquareBookingUrl(invoiceId: string): string {

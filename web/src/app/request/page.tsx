@@ -1,10 +1,14 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
 import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
-import { useGeneratedImages } from "@/components/providers/GeneratedImagesProvider";
+import {
+  useGeneratedImages,
+  type GeneratedImage,
+} from "@/components/providers/GeneratedImagesProvider";
 
 const API_ROUTE = "/api/request";
 
@@ -23,9 +27,38 @@ const initialMessage: SubmissionMessage = {
 const inputClassName =
   "mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none ring-amber-500 transition focus:ring-2";
 
+const extractFileName = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("data:")) {
+    return null;
+  }
+
+  let path = value;
+  try {
+    const url = new URL(value);
+    path = url.pathname;
+  } catch {
+    path = value;
+  }
+
+  const sanitized = path.split("?")[0] ?? "";
+  const segments = sanitized.split("/").filter((segment) => segment.length > 0);
+  if (segments.length === 0) {
+    return null;
+  }
+
+  return segments[segments.length - 1] || null;
+};
+
 export default function RequestQuotePage() {
-  const { projectCode, sessionId } = useGeneratedImages();
+  const { projectCode, sessionId, results } = useGeneratedImages();
   const [message, setMessage] = useState<SubmissionMessage>(initialMessage);
+  const [selectedMakeoverId, setSelectedMakeoverId] = useState<number | null>(
+    null,
+  );
   const normalizedProjectCode = useMemo(
     () => projectCode.trim(),
     [projectCode],
@@ -34,6 +67,51 @@ export default function RequestQuotePage() {
     () => sessionId.trim(),
     [sessionId],
   );
+  const selectedMakeover = useMemo<GeneratedImage | null>(() => {
+    if (!selectedMakeoverId) {
+      return null;
+    }
+    return (
+      results.find((item) => item.createdAt === selectedMakeoverId) ?? null
+    );
+  }, [results, selectedMakeoverId]);
+  const requestProjectCode = useMemo(() => {
+    const projectFromSelection = selectedMakeover?.projectCode?.trim() ?? "";
+    return projectFromSelection || normalizedProjectCode;
+  }, [normalizedProjectCode, selectedMakeover?.projectCode]);
+  const requestSessionId = useMemo(() => {
+    const sessionFromSelection = selectedMakeover?.sessionId?.trim() ?? "";
+    return sessionFromSelection || normalizedSessionId;
+  }, [normalizedSessionId, selectedMakeover?.sessionId]);
+  const selectedMakeoverOutputName = useMemo(
+    () =>
+      extractFileName(selectedMakeover?.blobPath) ??
+      extractFileName(selectedMakeover?.blobUrl),
+    [selectedMakeover?.blobPath, selectedMakeover?.blobUrl],
+  );
+  const selectedMakeoverInputName = useMemo(
+    () =>
+      extractFileName(selectedMakeover?.sourceBlobPath) ??
+      extractFileName(selectedMakeover?.sourceBlobUrl),
+    [selectedMakeover?.sourceBlobPath, selectedMakeover?.sourceBlobUrl],
+  );
+
+  useEffect(() => {
+    if (!results || results.length === 0) {
+      setSelectedMakeoverId(null);
+      return;
+    }
+
+    setSelectedMakeoverId((current) => {
+      if (
+        current &&
+        results.some((item) => item.createdAt === current)
+      ) {
+        return current;
+      }
+      return results[0]?.createdAt ?? null;
+    });
+  }, [results]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,16 +140,22 @@ export default function RequestQuotePage() {
       email: trimmed.email,
       ...(trimmed.phone ? { phone: trimmed.phone } : {}),
       ...(trimmed.description ? { description: trimmed.description } : {}),
-      ...(normalizedProjectCode
+      ...(requestProjectCode
         ? {
-            projectCode: normalizedProjectCode,
-            code: normalizedProjectCode,
+            projectCode: requestProjectCode,
+            code: requestProjectCode,
           }
         : {}),
-      ...(normalizedSessionId
+      ...(requestSessionId
         ? {
-            sessionId: normalizedSessionId,
+            sessionId: requestSessionId,
           }
+        : {}),
+      ...(selectedMakeoverInputName
+        ? { makeoverInputFileName: selectedMakeoverInputName }
+        : {}),
+      ...(selectedMakeoverOutputName
+        ? { makeoverOutputFileName: selectedMakeoverOutputName }
         : {}),
     };
 
@@ -274,6 +358,68 @@ export default function RequestQuotePage() {
             </p>
           )}
         </section>
+
+        {results.length > 0 && (
+          <section className="mt-10 rounded-[2.25rem] border border-white/10 bg-slate-950/70 p-8 text-sm text-slate-300 ring-1 ring-white/10 md:p-10">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+                  Choose a makeover
+                </p>
+                <h2 className="text-2xl font-semibold text-slate-50">
+                  Pick the render to attach to this request.
+                </h2>
+                <p className="text-xs text-slate-400">
+                  We&apos;ll route the matching session and public code to the studio so they can pull the exact files.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {results.slice(0, 6).map((result) => {
+                const isSelected = result.createdAt === selectedMakeoverId;
+                return (
+                  <button
+                    key={result.createdAt}
+                    type="button"
+                    onClick={() => setSelectedMakeoverId(result.createdAt)}
+                    className={`group relative overflow-hidden rounded-2xl border px-4 pb-4 pt-5 text-left transition ${
+                      isSelected
+                        ? "border-amber-400/80 bg-amber-400/10 ring-2 ring-amber-400/70"
+                        : "border-white/10 bg-black/30 hover:border-amber-300/40 hover:bg-amber-300/5"
+                    }`}
+                  >
+                    <span className="absolute right-4 top-4 rounded-full border border-white/20 bg-black/50 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-200">
+                      {isSelected ? "Selected" : "Select"}
+                    </span>
+                    <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/10">
+                      <img
+                        src={result.url}
+                        alt={result.prompt || "Generated makeover"}
+                        className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                        draggable={false}
+                      />
+                    </div>
+                    <div className="mt-3 space-y-2 text-xs text-slate-400">
+                      <p className="font-medium text-slate-100">
+                        {result.prompt.slice(0, 100)}
+                        {result.prompt.length > 100 ? "…" : ""}
+                      </p>
+                      <p className="text-[0.7rem] uppercase tracking-[0.3em] text-slate-500">
+                        Session {result.sessionId ?? "n/a"} · Code {result.projectCode ?? "n/a"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedMakeover && (
+              <p className="mt-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-xs text-slate-300">
+                Sharing session <span className="font-semibold text-slate-100">{requestSessionId}</span> with public code{" "}
+                <span className="font-semibold text-slate-100">{requestProjectCode}</span>.
+              </p>
+            )}
+          </section>
+        )}
 
         <section className="mt-10 rounded-[2.25rem] border border-white/10 bg-white/[0.03] p-8 text-sm text-slate-300 ring-1 ring-white/10 md:p-10">
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
