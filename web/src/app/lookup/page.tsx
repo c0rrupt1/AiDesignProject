@@ -180,7 +180,7 @@ export default function LookupPage() {
                 Retrieve project details by public code.
               </h1>
               <p className="max-w-3xl text-base text-slate-300 md:text-lg">
-                Enter the workspace or public code shared on the request form. We’ll ask the n8n workflow
+                Enter the workspace or public code shared on the request form. We’ll query the Supabase project view
                 for consolidated notes, files, and metadata tied to that code.
               </p>
             </div>
@@ -192,7 +192,7 @@ export default function LookupPage() {
                 Paired with requests
               </span>
               <span className="rounded-full border border-white/20 px-3 py-1 uppercase tracking-[0.35em]">
-                Powered by n8n
+                Powered by Supabase
               </span>
             </div>
           </div>
@@ -380,9 +380,43 @@ function BookingAction({ info }: { info: ActionInfo }) {
   const squareUrl = info.squareUrl ?? "";
   const schedulerUrl = info.schedulerUrl ?? "";
 
-  const showStripeOptions = Boolean(info.stripeCustomerId || stripePortalUrl);
-  const showSquareFallback = Boolean(!showStripeOptions && squareUrl && info.invoiceId);
-  const showSchedulerLink = Boolean(schedulerUrl);
+  const hasStripePortal = Boolean(info.stripeCustomerId || stripePortalUrl);
+  const hasSquareInvoice = Boolean(squareUrl && info.invoiceId);
+  const hasScheduler = Boolean(schedulerUrl);
+  const hasAnyAction = hasStripePortal || hasSquareInvoice || hasScheduler;
+
+  if (!hasAnyAction) {
+    return (
+      <div className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-slate-200">
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+          We&apos;re still polishing things
+        </p>
+        <p>
+          {info.statusName
+            ? `Current status: ${info.statusName}.`
+            : "Your makeover isn’t marked as client-ready just yet."} We’ll deliver the next render set soon—scroll
+          down to revisit previous makeovers while you wait. The billing portal unlocks automatically once
+          we mark your project as returned to client.
+        </p>
+      </div>
+    );
+  }
+
+  const statusBadge = info.canBook
+    ? {
+        label: "Ready to book & pay",
+        className: "bg-emerald-300 text-emerald-950",
+      }
+    : info.statusName
+      ? {
+          label: `Status: ${info.statusName}`,
+          className: "bg-white/10 text-slate-100",
+        }
+      : null;
+
+  const description = info.canBook
+    ? "Your project is marked as returned. Use the tools below to finish payment and reserve your session."
+    : "We found billing and scheduling tools linked to this project. Confirm the status above if you need the team to prepare anything first.";
 
   const handlePortalLaunch = async () => {
     if (!info.stripeCustomerId && stripePortalUrl) {
@@ -430,7 +464,11 @@ function BookingAction({ info }: { info: ActionInfo }) {
         return;
       }
 
-      if (data && typeof data === "object" && typeof (data as Record<string, unknown>).url === "string") {
+      if (
+        data &&
+        typeof data === "object" &&
+        typeof (data as Record<string, unknown>).url === "string"
+      ) {
         const target = (data as Record<string, unknown>).url as string;
         if (target.trim()) {
           window.location.href = target;
@@ -447,125 +485,108 @@ function BookingAction({ info }: { info: ActionInfo }) {
     }
   };
 
-  if (info.canBook && showStripeOptions) {
-    return (
-      <div className="space-y-4 rounded-2xl border border-emerald-400/60 bg-emerald-400/10 p-4 text-sm text-emerald-100">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em]">
-          Ready for checkout
+  return (
+    <section className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-5 text-sm text-slate-200">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-200">
+          Payment &amp; booking
         </p>
-        <p>
-          Your project is marked as{" "}
-          <span className="font-semibold">
-            {info.statusName ?? "Returned to client"}
+        {statusBadge && (
+          <span
+            className={`rounded-full px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.25em] ${statusBadge.className}`}
+          >
+            {statusBadge.label}
           </span>
-          . Use the billing portal to review invoices, update payment methods, and reserve your next
-          session.
-        </p>
-        {portalError && (
-          <p className="rounded-xl border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-            {portalError}
-          </p>
         )}
-        <div className="flex flex-wrap gap-3">
-          {info.stripeCustomerId && (
-            <button
-              onClick={handlePortalLaunch}
-              disabled={isLaunchingPortal}
-              className="inline-flex items-center justify-center rounded-lg bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isLaunchingPortal ? "Opening portal…" : "Open billing portal"}
-            </button>
-          )}
-          {stripePortalUrl && (
-            <a
-              target="_blank"
-              rel="noreferrer"
-              href={stripePortalUrl}
-              className="inline-flex items-center justify-center rounded-lg border border-emerald-300/60 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-300/10"
-            >
-              Use saved portal link
-            </a>
-          )}
-          {showSchedulerLink && (
-            <a
-              target="_blank"
-              rel="noreferrer"
-              href={schedulerUrl}
-              className="inline-flex items-center justify-center rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
-            >
-              Select appointment time
-            </a>
-          )}
-        </div>
       </div>
-    );
-  }
-
-  if (info.canBook && showSquareFallback) {
-    return (
-      <div className="space-y-3 rounded-2xl border border-emerald-400/60 bg-emerald-400/10 p-4 text-sm text-emerald-100">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em]">
-          Ready for checkout
+      <p className="text-xs text-slate-300 md:text-sm">{description}</p>
+      {portalError && (
+        <p className="rounded-xl border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          {portalError}
         </p>
-        <p>
-          Your project is marked as <span className="font-semibold">Returned to client</span>. Finish
-          booking with Square using invoice{" "}
-          <span className="font-mono">{info.invoiceId}</span>.
-        </p>
-        <div className="flex flex-wrap gap-3">
+      )}
+      <div className="grid gap-4 md:grid-cols-2">
+        {hasStripePortal && (
+          <div className="space-y-3 rounded-xl border border-white/15 bg-black/40 p-4">
+            <h3 className="text-sm font-semibold text-slate-100">Stripe billing portal</h3>
+            <p className="text-xs text-slate-400">
+              Review invoices, update payment methods, or download receipts through Stripe.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {info.stripeCustomerId && (
+                <button
+                  onClick={handlePortalLaunch}
+                  disabled={isLaunchingPortal}
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isLaunchingPortal ? "Opening…" : "Open secure portal"}
+                </button>
+              )}
+              {stripePortalUrl && (
+                <a
+                  target="_blank"
+                  rel="noreferrer"
+                  href={stripePortalUrl}
+                  className="inline-flex items-center justify-center rounded-lg border border-emerald-300/60 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-300/10"
+                >
+                  Use saved link
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+        {hasSquareInvoice && (
+          <div className="space-y-3 rounded-xl border border-white/15 bg-black/40 p-4">
+            <h3 className="text-sm font-semibold text-slate-100">Square invoice</h3>
+            <p className="text-xs text-slate-400">
+              Finish checkout with Square using invoice <span className="font-mono text-slate-100">{info.invoiceId}</span>.
+            </p>
+            <a
+              target="_blank"
+              rel="noreferrer"
+              href={squareUrl}
+              style={{
+                backgroundColor: "#006aff",
+                border: "none",
+                color: "white",
+                height: "40px",
+                textTransform: "uppercase",
+                fontFamily: "'Square Market', sans-serif",
+                letterSpacing: "1px",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 22px",
+                borderRadius: "999px",
+                fontSize: "12px",
+              }}
+            >
+              Open Square invoice
+            </a>
+          </div>
+        )}
+      </div>
+      {hasScheduler && (
+        <div className="rounded-xl border border-white/15 bg-black/40 p-4">
+          <h3 className="text-sm font-semibold text-slate-100">Schedule your session</h3>
+          <p className="text-xs text-slate-400">
+            Pick a time that matches your availability. The calendar opens in a new tab.
+          </p>
           <a
             target="_blank"
             rel="noreferrer"
-            href={squareUrl}
-            style={{
-              backgroundColor: "#006aff",
-              border: "none",
-              color: "white",
-              height: "40px",
-              textTransform: "uppercase",
-              fontFamily: "'Square Market', sans-serif",
-              letterSpacing: "1px",
-              lineHeight: "38px",
-              padding: "0 28px",
-              borderRadius: "8px",
-              fontWeight: 500,
-              fontSize: "14px",
-              cursor: "pointer",
-              display: "inline-block",
-            }}
+            href={schedulerUrl}
+            className="mt-3 inline-flex items-center justify-center rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
           >
-            Book now
+            Open booking calendar
           </a>
-          {showSchedulerLink && (
-            <a
-              target="_blank"
-              rel="noreferrer"
-              href={schedulerUrl}
-              className="inline-flex items-center justify-center rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
-            >
-              Select appointment time
-            </a>
-          )}
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-slate-200">
-      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-        We&apos;re still polishing things
-      </p>
-      <p>
-        {info.statusName
-          ? `Current status: ${info.statusName}.`
-          : "Your makeover isn’t marked as client-ready just yet."} We’ll deliver the next render set soon—scroll
-        down to revisit previous makeovers while you wait. The billing portal unlocks automatically once
-        we mark your project as returned to client.
-      </p>
-    </div>
+      )}
+    </section>
   );
 }
+
 
 function parseProjectDetails(data: unknown): ProjectDetails | null {
   const record = extractRecord(data);
@@ -701,12 +722,17 @@ function buildActionInfo(details: ProjectDetails): ActionInfo {
   const trimmedPortalUrl = details.stripePortalUrl?.trim() ?? null;
   const trimmedSchedulerUrl = details.schedulerUrl?.trim() ?? null;
   const trimmedProjectCode = details.publicCode?.trim() ?? null;
-  const statusSlug = trimmedStatus?.toLowerCase();
-  const isReturned = statusSlug === "returned to client";
+  const statusSlug = trimmedStatus?.toLowerCase() ?? "";
+  const isBookingReady =
+    statusSlug === "returned to client" ||
+    statusSlug === "ready for payment" ||
+    statusSlug === "ready for checkout" ||
+    statusSlug === "ready for booking" ||
+    (statusSlug.includes("ready") && statusSlug.includes("client"));
 
   const hasStripePortal = Boolean(trimmedCustomerId || trimmedPortalUrl);
   const hasInvoiceBooking = Boolean(trimmedInvoiceUrl || trimmedInvoice);
-  const canBook = Boolean(isReturned && (hasStripePortal || hasInvoiceBooking));
+  const canBook = Boolean(isBookingReady && (hasStripePortal || hasInvoiceBooking));
 
   let squareUrl: string | null = null;
   if (hasInvoiceBooking) {

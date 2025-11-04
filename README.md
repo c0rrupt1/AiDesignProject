@@ -31,25 +31,7 @@ strokes mark surfaces to redesign, while black areas stay untouched.
 
 ### Configuration
 
-Create a `.env.local` file in `web/` with your OpenRouter credentials:
-
-```bash
-OPENROUTER_API_KEY=...
-# Optional: override the target model (defaults to google/gemini-2.5-flash-image-preview)
-# OPENROUTER_IMAGE_MODEL=google/gemini-2.5-flash-image-preview
-# Optional: choose a different model for shopping keyword extraction
-# OPENROUTER_KEYWORDS_MODEL=google/gemma-3-4b-it
-# Required for Google Shopping lookup
-SERPAPI_KEY=...
-# Optional: refine SerpAPI locale settings
-# SERPAPI_GL=us
-# SERPAPI_HL=en
-# SERPAPI_LOCATION=United States
-# Optional: customize base URL or attribution headers
-# OPENROUTER_API_BASE_URL=https://openrouter.ai/api/v1
-# OPENROUTER_HTTP_REFERER=https://your-app-url.example
-# OPENROUTER_APP_TITLE=Interior Makeover Studio
-```
+Copy `web/.env.example` to `web/.env.local` and fill in the required secrets (OpenRouter, Supabase, SerpAPI, Stripe, Vercel Blob).
 
 The `/api/edit` route expects `multipart/form-data` with three fields:
 
@@ -59,6 +41,8 @@ The `/api/edit` route expects `multipart/form-data` with three fields:
 - `guidanceScale`, `strength`, `inferenceSteps`, `negativePrompt`, `seed` – Optional tuning fields sent from the UI (defaults are applied if omitted).
 - The shopping tab uses `/api/keywords` to send a cropped image region to OpenRouter’s Gemma 3 4B model and returns comma-separated keywords you can paste into Google Shopping.
 - `/api/shopping` proxies those keywords to SerpAPI’s Google Shopping endpoint so you can pull structured product hits without exposing your API key to the browser.
+- `/api/request` stores quote submissions in Supabase and optionally backfills project metadata for the lookup portal.
+- `/api/project/[code]` reads project metadata from Supabase (defaults to view `project_portal`) so clients can self-serve invoices, Stripe links, and scheduler URLs.
 - `/api/clip-match` ranks shopping thumbnails against the reference photo with OpenAI’s CLIP (via `@xenova/transformers`) so you can see similarity scores without hitting SerpAPI again.
 
 ### Suggested next steps

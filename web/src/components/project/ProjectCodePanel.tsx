@@ -90,7 +90,7 @@ export function ProjectCodePanel({ className = "" }: ProjectCodePanelProps) {
           </h2>
           <p className="text-xs text-slate-400 md:text-sm">
             This code links makeover blobs, the request form, and any external
-            automations. Share it with n8n or collaborators so every touchpoint
+            automations. Share it with Supabase or collaborators so every touchpoint
             references the same workspace.
           </p>
           {normalizedCode && (

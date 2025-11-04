@@ -15,26 +15,21 @@ Next.js (App Router) front end + API route for AI-powered room restyling powered
    npm install
    ```
 
-2. Configure environment variables by creating `./.env.local`:
+2. Configure environment variables by copying `./.env.example` to `./.env.local` and filling in the values:
 
    ```bash
-   OPENROUTER_API_KEY=your-primary-openrouter-api-key
-   # Optional: swap to another image-capable model
-   # OPENROUTER_IMAGE_MODEL=google/gemini-2.5-flash-image-preview
-   # Optional: choose a different model for keyword extraction
-   # OPENROUTER_KEYWORDS_MODEL=google/gemma-3-4b-it
-   # Required for SerpAPI shopping lookups
-   SERPAPI_KEY=your-serpapi-key
-   # Optional: refine SerpAPI locale settings
-   # SERPAPI_GL=us
-   # SERPAPI_HL=en
-   # SERPAPI_LOCATION=United States
-   # Optional: override the API base (defaults to https://openrouter.ai/api/v1)
-   # OPENROUTER_API_BASE_URL=https://openrouter.ai/api/v1
-   # Optional: set app attribution headers for the OpenRouter leaderboard
-   # OPENROUTER_HTTP_REFERER=https://your-app-url.example
-   # OPENROUTER_APP_TITLE=Interior Makeover Studio
+   cp .env.example .env.local
    ```
+
+   Required values:
+
+   - `OPENROUTER_API_KEY` – AI image editing + keyword extraction provider.
+   - `SERPAPI_KEY` – Google Shopping lookups.
+   - `BLOB_*` – [Vercel Blob](https://vercel.com/docs/storage/vercel-blob) credentials if you want to persist uploads.
+   - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` – Supabase project URL + service role key used by the API routes.
+   - `SUPABASE_ANON_KEY` – optional client key if you later need browser-side Supabase access.
+   - Optionally adjust `SUPABASE_PROJECTS_PORTAL_VIEW`, `SUPABASE_PROJECTS_TABLE`, and `SUPABASE_REQUESTS_TABLE` if your table names differ.
+   - `STRIPE_SECRET_KEY` / `STRIPE_PORTAL_*` – Stripe billing portal configuration for the lookup page.
 
 3. Start the development server:
 
@@ -44,6 +39,16 @@ Next.js (App Router) front end + API route for AI-powered room restyling powered
 
 4. Visit [http://localhost:3000](http://localhost:3000).
 
+### Supabase schema expectations
+
+The API assumes the following Supabase resources (override the names with the `SUPABASE_*` env vars if yours differ):
+
+- **Table `projects`** – primary store for portal metadata. Include at minimum `public_code` (unique text), `title`, `customer_name`, `email`, `phone`, `description`, `status_name`, `invoice_id`, `invoice_url`, `total_cost_cents` (integer), `paid` (boolean), `workspace_url`, `public_url`, `stripe_customer_id`, `stripe_portal_url`, `scheduler_url`, and optionally `square_invoice_id` / `square_invoice_url`.
+- **View `project_portal`** – read-only view exposing the same fields (or a join with related tables). `/api/project/[code]` queries it by `public_code`.
+- **Table `requests`** – captures form submissions. Expected columns: `name`, `customer_name`, `email`, `phone`, `description`, `project_code`, `session_id`, `submitted_at`, `origin`, `referer`, `user_agent`, and `payload` (JSONB). The service role key inserts rows, so configure RLS accordingly.
+
+Feel free to extend these tables with additional columns—everything comes back to the client and is parsed dynamically.
+
 ### How it works
 
 - `src/app/page.tsx` renders the UI for uploading a base photo and style prompt.
@@ -51,6 +56,8 @@ Next.js (App Router) front end + API route for AI-powered room restyling powered
 - `src/app/api/edit/route.ts` forwards the request to OpenRouter (default model `google/gemini-2.5-flash-image-preview`) and returns a base64 data URL, blending results with the original image if a mask is supplied.
 - The shopping side tab lets you crop any makeover (or the original upload) and `/api/keywords` sends that region to Gemma 3 4B for comma-separated shopping keywords.
 - `/api/shopping` exchanges those keywords with SerpAPI’s Google Shopping endpoint and returns structured product hits to the client.
+- `/api/request` persists quote/brief submissions directly into Supabase (default table `requests`) and stamps the related project rows.
+- `/api/project/[code]` pulls project metadata from Supabase (default view `project_portal`) so the lookup portal is real-time.
 - `/api/clip-match` runs OpenAI’s CLIP embeddings (via `@xenova/transformers`) to score shopping photos against the original upload and return similarity scores alongside product hits.
 - The UI previews generated images and keeps a local history for the session.
 - Advanced controls (strength, guidance scale, diffusion steps, negative prompt, seed) are serialized and sent with the request to improve consistency and adherence to instructions.

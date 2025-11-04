@@ -3,8 +3,8 @@ import Stripe from "stripe";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const stripeApiVersion =
-  (process.env.STRIPE_API_VERSION as Stripe.LatestApiVersion | undefined) ??
-  "2024-06-20";
+  (process.env.STRIPE_API_VERSION?.trim() as Stripe.LatestApiVersion | undefined) ??
+  "2025-02-24.acacia";
 const defaultReturnUrlTemplate =
   process.env.STRIPE_PORTAL_RETURN_URL?.trim() ?? undefined;
 const defaultConfigurationId =
@@ -109,4 +109,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
-

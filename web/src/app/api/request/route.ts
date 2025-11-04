@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
+import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
 
-const FALLBACK_WEBHOOK_URL =
-  "https://deckd.app.n8n.cloud/webhook/04a63e4d-c10e-48c0-ba40-a37d8a7688ac";
-
-const webhookUrl =
-  process.env.N8N_WEBHOOK_URL?.trim() || FALLBACK_WEBHOOK_URL;
+const requestsTable =
+  process.env.SUPABASE_REQUESTS_TABLE?.trim() || "requests";
+const projectsTable =
+  process.env.SUPABASE_PROJECTS_TABLE?.trim() || "projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,76 +112,32 @@ export async function POST(request: Request) {
     sanitizedPayload.notes = trimmedDescription;
   }
 
-  const origin = request.headers.get("origin")?.trim();
-  if (origin) {
-    sanitizedPayload.origin = origin;
-  }
+  const origin = request.headers.get("origin")?.trim() ?? undefined;
+  const referer = request.headers.get("referer")?.trim() ?? undefined;
+  const userAgent = request.headers.get("user-agent")?.trim() ?? undefined;
 
-  const referer = request.headers.get("referer")?.trim();
-  if (referer) {
-    sanitizedPayload.referer = referer;
-  }
+  const supabase = getServerSupabaseClient();
+  const submittedAt = new Date().toISOString();
 
-  const userAgent = request.headers.get("user-agent")?.trim();
-  if (userAgent) {
-    sanitizedPayload.userAgent = userAgent;
-  }
+  const insertPayload: Record<string, unknown> = {
+    name: trimmedName,
+    customer_name: trimmedCustomerName,
+    email: trimmedEmail,
+    phone: trimmedPhone || null,
+    description: trimmedDescription || null,
+    project_code: trimmedProjectCode || null,
+    session_id: trimmedSessionId || null,
+    submitted_at: submittedAt,
+    origin: origin || null,
+    referer: referer || null,
+    user_agent: userAgent || null,
+    payload: sanitizedPayload,
+  };
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
+  const { error } = await supabase.from(requestsTable).insert(insertPayload);
 
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(sanitizedPayload),
-      signal: controller.signal,
-    }).finally(() => {
-      clearTimeout(timeout);
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(
-        "n8n webhook responded with an error",
-        response.status,
-        errorBody,
-      );
-
-      let message = "We couldn't submit your request right now. Please try again shortly.";
-
-      try {
-        const parsed = JSON.parse(errorBody);
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          "message" in parsed &&
-          typeof parsed.message === "string" &&
-          parsed.message.trim()
-        ) {
-          message = parsed.message.trim();
-        }
-      } catch (parseError) {
-        console.error("Unable to parse error body from n8n", parseError);
-      }
-
-      return NextResponse.json({ message }, { status: 502 });
-    }
-
-    const successBody = await response.json().catch(() => null);
-    const successMessage =
-      successBody &&
-      typeof successBody === "object" &&
-      "message" in successBody &&
-      typeof successBody.message === "string"
-        ? successBody.message
-        : "Request sent! We'll be in touch soon.";
-
-    return NextResponse.json({ message: successMessage });
-  } catch (error) {
-    console.error("Failed to reach n8n webhook", error);
+  if (error) {
+    console.error("Supabase insert failed for request submission", error);
     return NextResponse.json(
       {
         message:
@@ -190,4 +146,26 @@ export async function POST(request: Request) {
       { status: 502 },
     );
   }
+
+  if (trimmedProjectCode) {
+    const { error: projectUpdateError } = await supabase
+      .from(projectsTable)
+      .update({
+        last_request_at: submittedAt,
+        last_request_name: trimmedName,
+        last_request_email: trimmedEmail,
+      })
+      .eq("public_code", trimmedProjectCode);
+
+    if (projectUpdateError) {
+      console.warn(
+        "Unable to update project metadata after request submission",
+        projectUpdateError,
+      );
+    }
+  }
+
+  return NextResponse.json({
+    message: "Request sent! We'll be in touch soon.",
+  });
 }

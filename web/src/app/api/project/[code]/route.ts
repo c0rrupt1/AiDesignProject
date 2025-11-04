@@ -1,29 +1,47 @@
 import { NextResponse } from "next/server";
-
-const lookupBaseUrl = process.env.N8N_PROJECT_LOOKUP_URL?.trim() ?? "";
-const REQUEST_TIMEOUT_MS = 10000;
+import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
 
 const ALLOWED_CODE = /^[A-Za-z0-9._-]+$/;
+const projectsPortalView =
+  process.env.SUPABASE_PROJECTS_PORTAL_VIEW?.trim() || "project_portal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type RouteParams = Record<string, string | string[] | undefined>;
 
+type ProjectRow = Record<string, unknown> & {
+  public_code?: string | null;
+};
+
+function normalizeProjectRow(row: ProjectRow): Record<string, unknown> {
+  const cleaned = { ...row };
+
+  if (typeof cleaned.total_cost_cents === "number") {
+    cleaned.total_cost = cleaned.total_cost_cents / 100;
+  }
+
+  if (
+    typeof cleaned.square_invoice_url === "string" &&
+    !cleaned.invoice_url
+  ) {
+    cleaned.invoice_url = cleaned.square_invoice_url;
+  }
+
+  if (
+    typeof cleaned.square_invoice_id === "string" &&
+    !cleaned.invoice_id
+  ) {
+    cleaned.invoice_id = cleaned.square_invoice_id;
+  }
+
+  return cleaned;
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<RouteParams> },
 ) {
-  if (!lookupBaseUrl) {
-    return NextResponse.json(
-      {
-        error:
-          "N8N_PROJECT_LOOKUP_URL is not configured on the server. Set it to your n8n lookup webhook.",
-      },
-      { status: 500 },
-    );
-  }
-
   const resolvedParams = await context.params;
   const rawCodeCandidate = resolvedParams.code;
   const rawCode = Array.isArray(rawCodeCandidate)
@@ -48,74 +66,31 @@ export async function GET(
     );
   }
 
-  let targetUrl: string;
-  try {
-    if (lookupBaseUrl.includes("{code}")) {
-      targetUrl = lookupBaseUrl.replace("{code}", encodeURIComponent(normalizedCode));
-    } else {
-      const url = new URL(lookupBaseUrl);
-      url.searchParams.set("code", normalizedCode);
-      targetUrl = url.toString();
-    }
-  } catch (error) {
-    console.error("Failed to construct the n8n lookup URL.", error);
-    return NextResponse.json(
-      { error: "The lookup service URL is misconfigured on the server." },
-      { status: 500 },
-    );
-  }
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase
+    .from(projectsPortalView)
+    .select("*")
+    .eq("public_code", normalizedCode)
+    .maybeSingle();
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(targetUrl, {
-      method: "GET",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-    const rawBody = await response.text();
-
-    if (!response.ok) {
-      let errorMessage = rawBody.trim();
-      if (!errorMessage) {
-        errorMessage = `Lookup failed with status ${response.status}`;
-      }
-      return NextResponse.json(
-        {
-          error: errorMessage,
-          status: response.status,
-        },
-        { status: response.status },
-      );
-    }
-
-    if (!rawBody) {
-      return NextResponse.json({ data: null, raw: "" });
-    }
-
-    try {
-      const parsed = JSON.parse(rawBody);
-      return NextResponse.json({ data: parsed });
-    } catch {
-      return NextResponse.json({ data: rawBody });
-    }
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      return NextResponse.json(
-        { error: "Lookup timed out while contacting the n8n workflow." },
-        { status: 504 },
-      );
-    }
-    console.error("Failed to lookup project code via n8n.", error);
+  if (error) {
+    console.error("Supabase project lookup failed", error);
     return NextResponse.json(
       { error: "We were unable to fetch project information. Try again shortly." },
       { status: 502 },
     );
-  } finally {
-    clearTimeout(timeout);
   }
+
+  const project = (data ?? null) as ProjectRow | null;
+
+  if (!project) {
+    return NextResponse.json(
+      { error: "We couldn't find a project with that code." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({
+    data: normalizeProjectRow(project),
+  });
 }

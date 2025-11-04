@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useGeneratedImages } from "@/components/providers/GeneratedImagesProvider";
 
@@ -48,11 +49,14 @@ export function RecentMakeoversStrip({
             className="space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-slate-300"
           >
             <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/10">
-              <img
+              <Image
                 src={item.url}
                 alt={`Generated makeover for ${item.prompt}`}
-                className="absolute inset-0 h-full w-full object-cover"
+                fill
+                className="object-cover"
                 draggable={false}
+                unoptimized
+                sizes="(max-width: 768px) 100vw, 25vw"
               />
             </div>
             <figcaption className="space-y-1">
