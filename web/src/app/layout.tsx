@@ -48,12 +48,12 @@ function isCrmHost(hostHeader: string | null): boolean {
   return false;
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const incomingHeaders = headers();
+  const incomingHeaders = await headers();
   const host = incomingHeaders.get("host");
   const isCrm = isCrmHost(host);
 
