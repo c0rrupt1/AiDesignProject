@@ -4,13 +4,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let cachedClient: SupabaseClient | null = null;
 
-function resolveEnv(name: string, fallback?: string): string {
-  const raw = process.env[name];
-  if (raw && raw.trim().length > 0) {
-    return raw.trim();
-  }
-  if (fallback && fallback.trim().length > 0) {
-    return fallback.trim();
+function requireEnv(value: string | undefined, name: string): string {
+  if (value && value.trim().length > 0) {
+    return value.trim();
   }
   throw new Error(`Missing required environment variable ${name}.`);
 }
@@ -20,10 +16,13 @@ export function getBrowserSupabaseClient(): SupabaseClient {
     return cachedClient;
   }
 
-  const url = resolveEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.SUPABASE_URL);
-  const anonKey = resolveEnv(
+  const url = requireEnv(
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL,
+    "NEXT_PUBLIC_SUPABASE_URL",
+  );
+  const anonKey = requireEnv(
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY,
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    process.env.SUPABASE_ANON_KEY,
   );
 
   cachedClient = createClient(url, anonKey, {
