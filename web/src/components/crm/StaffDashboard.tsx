@@ -209,6 +209,38 @@ function resolveInvoiceUrl(invoice: InvoiceRecord): string | null {
   return resolved ? String(resolved).trim() : null;
 }
 
+function normalizeStatus(status: string | null | undefined): string {
+  return (status ?? "").trim().toLowerCase();
+}
+
+function getStatusBadgeClass(status: string | null | undefined): string {
+  switch (normalizeStatus(status)) {
+    case "approved":
+      return "border-emerald-400/50 bg-emerald-400/10 text-emerald-200";
+    case "invoiced":
+      return "border-amber-400/50 bg-amber-400/10 text-amber-200";
+    case "completed":
+      return "border-sky-400/50 bg-sky-400/10 text-sky-100";
+    case "review":
+    case "new":
+    case "submitted":
+      return "border-rose-400/50 bg-rose-400/10 text-rose-200";
+    case "archived":
+    case "cancelled":
+      return "border-slate-500/60 bg-slate-500/15 text-slate-100";
+    default:
+      return "border-white/20 bg-white/5 text-slate-100";
+  }
+}
+
+function getStatusLabel(status: string | null | undefined): string {
+  const normalized = normalizeStatus(status);
+  if (!normalized) {
+    return "submitted";
+  }
+  return normalized;
+}
+
 export function StaffDashboard() {
   const {
     supabase,
@@ -226,6 +258,7 @@ export function StaffDashboard() {
   const [quotesLoading, setQuotesLoading] = useState(false);
   const [quotesError, setQuotesError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
 
   const [quoteDetails, setQuoteDetails] = useState<QuoteDetails | null>(null);
@@ -278,20 +311,84 @@ export function StaffDashboard() {
   );
 
   const filteredQuotes = useMemo(() => {
-    if (statusFilter === "all") {
-      return quotes;
+    let pipeline = quotes;
+    if (statusFilter !== "all") {
+      if (statusFilter === "awaiting") {
+        pipeline = quotes.filter((quote) => {
+          const status = normalizeStatus(quote.status);
+          return status === "" || status === "submitted" || status === "new";
+        });
+      } else {
+        pipeline = quotes.filter(
+          (quote) => normalizeStatus(quote.status) === statusFilter.toLowerCase(),
+        );
+      }
     }
-    if (statusFilter === "awaiting") {
-      return quotes.filter((quote) => {
-        const status = quote.status?.toLowerCase() ?? "";
-        return status === "" || status === "submitted" || status === "new";
-      });
+
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return pipeline;
     }
-    return quotes.filter(
-      (quote) =>
-        (quote.status ?? "").toLowerCase() === statusFilter.toLowerCase(),
-    );
-  }, [quotes, statusFilter]);
+
+    return pipeline.filter((quote) => {
+      const haystack = [
+        quote.contact_name,
+        quote.company_name,
+        quote.email,
+        quote.phone,
+        quote.city,
+        quote.state,
+        quote.postal_code,
+        quote.id,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }, [quotes, statusFilter, searchTerm]);
+
+  useEffect(() => {
+    if (filteredQuotes.length === 0) {
+      return;
+    }
+    setSelectedQuoteId((current) => {
+      if (!current) {
+        return filteredQuotes[0]?.id ?? null;
+      }
+      return filteredQuotes.some((quote) => quote.id === current)
+        ? current
+        : filteredQuotes[0]?.id ?? current;
+    });
+  }, [filteredQuotes]);
+
+  const quickStats = useMemo(() => {
+    const awaiting = quotes.filter((quote) => {
+      const status = normalizeStatus(quote.status);
+      return status === "" || status === "submitted" || status === "new";
+    }).length;
+    const reviewing = quotes.filter(
+      (quote) => normalizeStatus(quote.status) === "review",
+    ).length;
+    const approved = quotes.filter(
+      (quote) => normalizeStatus(quote.status) === "approved",
+    ).length;
+    const invoiced = quotes.filter(
+      (quote) => normalizeStatus(quote.status) === "invoiced",
+    ).length;
+    const completed = quotes.filter(
+      (quote) => normalizeStatus(quote.status) === "completed",
+    ).length;
+
+    return [
+      { label: "Needs action", value: awaiting },
+      { label: "Reviewing", value: reviewing },
+      { label: "Approved", value: approved },
+      { label: "Invoiced", value: invoiced },
+      { label: "Completed", value: completed },
+      { label: "Total", value: quotes.length },
+    ];
+  }, [quotes]);
 
   useEffect(() => {
     if (!selectedQuote) {
@@ -931,7 +1028,7 @@ export function StaffDashboard() {
 
   if (profileLoading) {
     return (
-      <div className="rounded-[2.5rem] border border-white/10 bg-slate-950/80 p-10 text-sm text-slate-300 ring-1 ring-white/10">
+      <div className="flex min-h-[50vh] items-center justify-center rounded-3xl border border-white/10 bg-slate-950/80 p-12 text-sm text-slate-400">
         Checking your staff credentials…
       </div>
     );
@@ -939,12 +1036,12 @@ export function StaffDashboard() {
 
   if (profileError) {
     return (
-      <div className="space-y-4 rounded-[2.5rem] border border-red-500/60 bg-red-500/10 p-10 text-sm text-red-100 ring-1 ring-red-500/60">
+      <div className="max-w-md space-y-5 rounded-3xl border border-rose-500/60 bg-rose-500/10 p-10 text-sm text-rose-100">
         <p>{profileError}</p>
         <button
           type="button"
           onClick={() => void signOut()}
-          className="rounded-full border border-red-400/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-red-100 transition hover:bg-red-400/20"
+          className="rounded-full border border-rose-400/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-rose-100 transition hover:bg-rose-400/15"
         >
           Sign out
         </button>
@@ -954,15 +1051,15 @@ export function StaffDashboard() {
 
   if (!profile || !isStaff) {
     return (
-      <div className="space-y-6 rounded-[2.5rem] border border-red-500/60 bg-red-500/10 p-10 ring-1 ring-red-500/60">
+      <div className="max-w-lg space-y-6 rounded-3xl border border-rose-500/60 bg-rose-500/10 p-10 text-sm text-rose-100">
         <div className="space-y-3">
-          <p className="w-fit rounded-full border border-red-400/60 bg-red-400/20 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.4em] text-red-100">
+          <p className="w-fit rounded-full border border-rose-400/60 bg-rose-400/20 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.4em]">
             Access denied
           </p>
-          <h1 className="text-2xl font-semibold text-red-100">
+          <h1 className="text-2xl font-semibold">
             This account is not marked as staff.
           </h1>
-          <p className="text-sm text-red-100/80">
+          <p>
             Ask an administrator to toggle `is_staff` on your profile inside Supabase
             before returning to the CRM.
           </p>
@@ -970,7 +1067,7 @@ export function StaffDashboard() {
         <button
           type="button"
           onClick={() => void signOut()}
-          className="rounded-full border border-red-400/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-red-100 transition hover:bg-red-400/20"
+          className="rounded-full border border-rose-400/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-rose-100 transition hover:bg-rose-400/15"
         >
           Sign out
         </button>
@@ -978,560 +1075,726 @@ export function StaffDashboard() {
     );
   }
 
+  const primaryIdentifier =
+    profile.full_name ?? profile.company_name ?? user.email ?? "Staff member";
+
   return (
-    <div className="space-y-8">
-      <div className="space-y-4 rounded-[2.5rem] border border-white/10 bg-slate-950/80 p-8 ring-1 ring-white/10 md:p-10">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
-            <p className="w-fit rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.4em] text-sky-200">
-              deckd crm
+    <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
+      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
+          <div>
+            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.4em] text-sky-300">
+              deckd atomic workspace
             </p>
-            <h1 className="text-3xl font-semibold text-slate-50 md:text-[2.2rem]">
-              Manage quotes, uploads, and invoices.
+            <h1 className="mt-2 text-xl font-semibold text-slate-100 sm:text-2xl">
+              CRM operations cockpit
             </h1>
-            <p className="text-sm text-slate-400 md:text-base">
-              Filter new requests, review customer references, and draft invoices that
-              sync back to the customer portal.
-            </p>
           </div>
-          <div className="flex flex-col items-start gap-2 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-[0.65rem] uppercase tracking-[0.35em] text-slate-300">
-            <span className="text-[0.6rem] font-semibold text-sky-200">
-              Signed in as
-            </span>
-            <span>{user.email ?? profile.full_name ?? profile.user_id}</span>
+          <div className="flex flex-wrap items-center justify-end gap-4">
+            <div className="text-right text-xs text-slate-400">
+              <p className="font-semibold text-slate-100">{primaryIdentifier}</p>
+              <p className="uppercase tracking-[0.35em] text-slate-500">Staff</p>
+            </div>
             <button
               type="button"
               onClick={() => void signOut()}
-              className="rounded-full border border-white/15 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-red-400/60 hover:bg-red-400/10 hover:text-red-200"
+              className="rounded-full border border-white/15 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-rose-400/60 hover:bg-rose-400/10 hover:text-rose-100"
             >
               Sign out
             </button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-300">
-          <button
-            type="button"
-            onClick={() => setActiveView("quotes")}
-            className={`rounded-full border px-4 py-2 transition ${
-              activeView === "quotes"
-                ? "border-sky-300/70 bg-sky-400/15 text-sky-100"
-                : "border-white/15 bg-black/10 hover:border-sky-200/40 hover:text-sky-100"
-            }`}
-          >
-            Quotes
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("uploads")}
-            className={`rounded-full border px-4 py-2 transition ${
-              activeView === "uploads"
-                ? "border-sky-300/70 bg-sky-400/15 text-sky-100"
-                : "border-white/15 bg-black/10 hover:border-sky-200/40 hover:text-sky-100"
-            }`}
-          >
-            Uploads
-          </button>
-        </div>
-      </div>
+      </header>
 
-      {activeView === "quotes" ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)]">
-          <section className="space-y-5 rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 ring-1 ring-white/10 md:p-7">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-1">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
-                  Quotes
-                </h2>
-                <p className="text-xs text-slate-500">
-                  {quotes.length} total · {filteredQuotes.length} shown
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void loadQuotes()}
-                className="rounded-full border border-white/15 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100"
-              >
-                Refresh
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
-              {["all", "awaiting", ...QUOTE_STATUSES].map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setStatusFilter(status)}
-                  className={`rounded-full border px-3 py-1 transition ${
-                    statusFilter === status
-                      ? "border-sky-300/70 bg-sky-400/15 text-sky-100"
-                      : "border-white/15 bg-black/10 hover:border-sky-200/40 hover:text-sky-100"
-                  }`}
-                >
-                  {status === "awaiting" ? "Needs review" : status}
-                </button>
-              ))}
-            </div>
-
-            {quotesLoading ? (
-              <p className="rounded-2xl border border-white/10 bg-black/30 px-4 py-6 text-sm text-slate-300">
-                Loading quotes…
-              </p>
-            ) : quotesError ? (
-              <p className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-6 text-sm text-red-100">
-                {quotesError}
-              </p>
-            ) : filteredQuotes.length === 0 ? (
-              <p className="rounded-2xl border border-white/10 bg-black/30 px-4 py-6 text-sm text-slate-300">
-                No quotes match this filter yet.
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {filteredQuotes.map((quote) => {
-                  const isSelected = quote.id === selectedQuoteId;
-                  return (
-                    <li key={quote.id}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedQuoteId(quote.id)}
-                        className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
-                          isSelected
-                            ? "border-sky-300/80 bg-sky-400/15 text-sky-100"
-                            : "border-white/10 bg-black/20 text-slate-200 hover:border-sky-300/50 hover:bg-sky-300/10 hover:text-sky-50"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[0.65rem] uppercase tracking-[0.3em]">
-                          <span>{quote.status?.toUpperCase() ?? "SUBMITTED"}</span>
-                          <span>{formatTimestamp(quote.created_at)}</span>
-                        </div>
-                        <p className="mt-2 text-sm font-semibold text-slate-50">
-                          {quote.contact_name ?? quote.company_name ?? "Unnamed project"}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {quote.city || quote.state || quote.postal_code
-                            ? [quote.city, quote.state, quote.postal_code]
-                                .filter(Boolean)
-                                .join(", ")
-                            : quote.email ?? quote.phone ?? "No contact info"}
-                        </p>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-          <section className="space-y-5 rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 ring-1 ring-white/10 md:p-8">
-            {selectedQuote ? (
-              <>
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-2">
-                    <p className="text-[0.6rem] font-semibold uppercase tracking-[0.4em] text-sky-200">
-                      Quote overview
-                    </p>
-                    <h2 className="text-2xl font-semibold text-slate-50">
-                      {selectedQuote.contact_name ?? "Unnamed request"}
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      Created {formatTimestamp(selectedQuote.created_at)}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-300">
-                    <select
-                      value={statusDraft}
-                      onChange={(event) => setStatusDraft(event.target.value)}
-                      className="rounded-full border border-white/15 bg-black/30 px-3 py-2 text-xs text-slate-100 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/40"
-                    >
-                      <option value="">Select status</option>
-                      {QUOTE_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveQuoteMeta()}
-                      className="rounded-full border border-sky-300/60 bg-sky-400/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-sky-100 transition hover:bg-sky-400/30 disabled:cursor-not-allowed disabled:border-slate-500/40 disabled:bg-slate-500/20 disabled:text-slate-400"
-                      disabled={metaSaving}
-                    >
-                      {metaSaving ? "Saving…" : "Save"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 rounded-2xl border border-white/10 bg-black/25 px-4 py-4 text-xs text-slate-300">
-                    <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-500">
-                      Contact
-                    </p>
-                    <p className="text-sm font-semibold text-slate-100">
-                      {quoteDetails?.profile?.full_name ??
-                        selectedQuote.contact_name ??
-                        "Unknown"}
-                    </p>
-                    <p>{quoteDetails?.profile?.company_name ?? selectedQuote.company_name ?? "—"}</p>
-                    <p>{quoteDetails?.profile?.email ?? selectedQuote.email ?? "—"}</p>
-                    <p>{quoteDetails?.profile?.phone ?? selectedQuote.phone ?? "—"}</p>
-                  </div>
-                  <div className="space-y-2 rounded-2xl border border-white/10 bg-black/25 px-4 py-4 text-xs text-slate-300">
-                    <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-500">
-                      Address
-                    </p>
-                    <p>
-                      {quoteDetails?.profile?.address_line1 ??
-                        selectedQuote.address_line1 ??
-                        "—"}
-                    </p>
-                    <p>
-                      {quoteDetails?.profile?.address_line2 ??
-                        selectedQuote.address_line2 ??
-                        ""}
-                    </p>
-                    <p>
-                      {[quoteDetails?.profile?.city ?? selectedQuote.city, quoteDetails?.profile?.state ?? selectedQuote.state]
-                        .filter(Boolean)
-                        .join(", ") || "—"}
-                    </p>
-                    <p>
-                      {quoteDetails?.profile?.postal_code ??
-                        selectedQuote.postal_code ??
-                        "—"}
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
-                    Customer notes
-                  </h3>
-                  <p className="mt-2 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-slate-300">
-                    {selectedQuote.customer_notes?.trim()
-                      ? selectedQuote.customer_notes
-                      : "Customer did not leave additional notes."}
-                  </p>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
-                    Internal notes
-                  </h3>
-                  <textarea
-                    rows={4}
-                    value={teamNotesDraft}
-                    onChange={(event) => setTeamNotesDraft(event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/40"
-                    placeholder="Add design direction, approvals, or follow-up steps for the team."
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
-                      Attached files
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => selectedQuote && void loadQuoteDetails(selectedQuote)}
-                      className="rounded-full border border-white/15 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100"
-                    >
-                      Refresh
-                    </button>
-                  </div>
-                  {detailsLoading ? (
-                    <p className="mt-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-sm text-slate-300">
-                      Loading files…
-                    </p>
-                  ) : quoteDetails?.files?.length ? (
-                    <div className="mt-3 grid gap-4 md:grid-cols-2">
-                      {quoteDetails.files.map((file) => (
-                        <div
-                          key={file.linkId}
-                          className="group overflow-hidden rounded-2xl border border-white/10 bg-black/25 p-4 transition hover:border-sky-300/50 hover:bg-sky-300/10"
-                        >
-                          <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                            {file.signedUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={file.signedUrl}
-                                alt={file.originalName ?? "Quote reference"}
-                                className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                                Preview unavailable
-                              </div>
-                            )}
-                          </div>
-                          <div className="mt-3 space-y-1 text-xs text-slate-300">
-                            <p className="font-semibold text-slate-100">
-                              {file.originalName ?? file.path}
-                            </p>
-                            <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-500">
-                              {formatFileSize(file.sizeBytes)}
-                            </p>
-                            <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-500">
-                              {formatTimestamp(file.createdAt)}
-                            </p>
-                            <Link
-                              href={file.signedUrl ?? "#"}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100 disabled:pointer-events-none disabled:opacity-50"
-                            >
-                              Open file →
-                            </Link>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-sm text-slate-300">
-                      No files attached yet.
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
-                    Create invoice
-                  </h3>
-                  <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
-                    <label className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
-                      Amount (USD)
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={newInvoiceAmount}
-                        onChange={(event) => setNewInvoiceAmount(event.target.value)}
-                        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/40"
-                        placeholder="2500"
-                      />
-                    </label>
-                    <label className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
-                      Due date
-                      <input
-                        type="date"
-                        value={newInvoiceDueDate}
-                        onChange={(event) => setNewInvoiceDueDate(event.target.value)}
-                        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/40"
-                      />
-                    </label>
-                    <label className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
-                      Status
-                      <select
-                        value={newInvoiceStatus}
-                        onChange={(event) => setNewInvoiceStatus(event.target.value)}
-                        className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/40"
-                      >
-                        {INVOICE_STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => void handleCreateInvoice()}
-                      className="rounded-full border border-emerald-300/60 bg-emerald-400/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-emerald-100 transition hover:bg-emerald-400/30 disabled:cursor-not-allowed disabled:border-slate-500/40 disabled:bg-slate-500/20 disabled:text-slate-400"
-                      disabled={creatingInvoice}
-                    >
-                      {creatingInvoice ? "Creating…" : "Create"}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
-                    Invoices
-                  </h3>
-                  {quoteDetails?.invoices?.length ? (
-                    <ul className="mt-3 space-y-3">
-                      {quoteDetails.invoices.map((invoice) => {
-                        const amount = resolveAmount(
-                          invoice.amount_cents ?? invoice.total_cents,
-                          invoice.total,
-                        );
-                        const invoiceUrl = resolveInvoiceUrl(invoice);
-                        return (
-                          <li
-                            key={invoice.id}
-                            className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-slate-300"
-                          >
-                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                              <div className="space-y-1">
-                                <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-500">
-                                  Invoice {invoice.id.slice(0, 8)}
-                                </p>
-                                <p className="text-slate-100">
-                                  {formatCurrency(amount)}
-                                </p>
-                                <p className="text-[0.7rem] text-slate-400">
-                                  Created {formatTimestamp(invoice.created_at)}
-                                </p>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 text-[0.65rem] uppercase tracking-[0.35em] text-slate-300">
-                                <select
-                                  value={invoiceDraftStatuses[invoice.id] ?? invoice.status ?? "draft"}
-                                  onChange={(event) =>
-                                    setInvoiceDraftStatuses((current) => ({
-                                      ...current,
-                                      [invoice.id]: event.target.value,
-                                    }))
-                                  }
-                                  className="rounded-full border border-white/15 bg-black/30 px-3 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/40"
-                                >
-                                  {INVOICE_STATUSES.map((status) => (
-                                    <option key={status} value={status}>
-                                      {status}
-                                    </option>
-                                  ))}
-                                </select>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleUpdateInvoiceStatus(invoice.id)}
-                                  className="rounded-full border border-emerald-300/60 bg-emerald-400/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-emerald-100 transition hover:bg-emerald-400/30"
-                                >
-                                  Save
-                                </button>
-                              </div>
-                            </div>
-                            <div className="mt-3 flex flex-wrap gap-2 text-[0.65rem] uppercase tracking-[0.35em] text-slate-400">
-                              {invoice.due_date && (
-                                <span className="rounded-full border border-white/10 px-3 py-1">
-                                  Due {formatTimestamp(invoice.due_date)}
-                                </span>
-                              )}
-                              {invoice.paid_at && (
-                                <span className="rounded-full border border-emerald-400/40 px-3 py-1 text-emerald-100">
-                                  Paid {formatTimestamp(invoice.paid_at)}
-                                </span>
-                              )}
-                              {invoiceUrl && (
-                                <Link
-                                  href={invoiceUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="rounded-full border border-white/15 px-3 py-1 text-slate-200 transition hover:border-emerald-300/60 hover:bg-emerald-300/10 hover:text-emerald-100"
-                                >
-                                  Open invoice →
-                                </Link>
-                              )}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="mt-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-sm text-slate-300">
-                      No invoices created yet.
-                    </p>
-                  )}
-                </div>
-
-                {(detailMessage || detailsError) && (
-                  <p
-                    className={`rounded-2xl border px-4 py-3 text-sm ${
-                      detailsError
-                        ? "border-red-500/60 bg-red-500/10 text-red-100"
-                        : "border-emerald-500/60 bg-emerald-500/10 text-emerald-100"
-                    }`}
-                  >
-                    {detailsError ?? detailMessage}
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="rounded-2xl border border-white/10 bg-black/30 px-4 py-6 text-sm text-slate-300">
-                Select a quote to review its details.
-              </p>
-            )}
-          </section>
-        </div>
-      ) : (
-        <section className="space-y-5 rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 ring-1 ring-white/10 md:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-1">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
-                Customer uploads
-              </h2>
-              <p className="text-xs text-slate-500">
-                {uploads.length} files · newest first
-              </p>
-            </div>
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-full border border-white/10 bg-slate-900/60 p-1">
             <button
               type="button"
-              onClick={() => {
-                setUploadsLoaded(false);
-                void loadUploads();
-              }}
-              className="rounded-full border border-white/15 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100"
+              onClick={() => setActiveView("quotes")}
+              className={`rounded-full px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] transition ${
+                activeView === "quotes"
+                  ? "bg-sky-500 text-slate-950"
+                  : "text-slate-300 hover:text-slate-100"
+              }`}
             >
-              Refresh
+              Pipeline
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView("uploads")}
+              className={`rounded-full px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] transition ${
+                activeView === "uploads"
+                  ? "bg-sky-500 text-slate-950"
+                  : "text-slate-300 hover:text-slate-100"
+              }`}
+            >
+              Uploads
             </button>
           </div>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="hidden sm:inline">{quotes.length} quotes synced</span>
+            <span className="hidden sm:inline">·</span>
+            <span>{`${uploadsLoaded ? uploads.length : "—"} latest uploads`}</span>
+          </div>
+        </div>
 
-          {uploadsLoading ? (
-            <p className="rounded-2xl border border-white/10 bg-black/30 px-4 py-6 text-sm text-slate-300">
-              Loading uploads…
-            </p>
-          ) : uploadsError ? (
-            <p className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-6 text-sm text-red-100">
-              {uploadsError}
-            </p>
-          ) : uploads.length === 0 ? (
-            <p className="rounded-2xl border border-white/10 bg-black/30 px-4 py-6 text-sm text-slate-300">
-              No uploads yet.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-separate border-spacing-y-2 text-left text-xs text-slate-300">
-                <thead className="text-[0.6rem] uppercase tracking-[0.35em] text-slate-500">
-                  <tr>
-                    <th className="rounded-l-xl bg-black/30 px-3 py-2">File</th>
-                    <th className="bg-black/30 px-3 py-2">User</th>
-                    <th className="bg-black/30 px-3 py-2">Size</th>
-                    <th className="bg-black/30 px-3 py-2">Uploaded</th>
-                    <th className="rounded-r-xl bg-black/30 px-3 py-2 text-right">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {uploads.map((upload) => (
-                    <tr key={upload.id}>
-                      <td className="rounded-l-xl bg-black/20 px-3 py-3 text-sm text-slate-100">
-                        {upload.original_name ?? upload.path}
-                      </td>
-                      <td className="bg-black/20 px-3 py-3 text-[0.7rem] uppercase tracking-[0.3em] text-slate-400">
-                        {upload.user_id ?? "—"}
-                      </td>
-                      <td className="bg-black/20 px-3 py-3 text-[0.7rem] uppercase tracking-[0.3em] text-slate-400">
-                        {formatFileSize(upload.size_bytes ?? null)}
-                      </td>
-                      <td className="bg-black/20 px-3 py-3 text-[0.7rem] uppercase tracking-[0.3em] text-slate-400">
-                        {formatTimestamp(upload.created_at ?? null)}
-                      </td>
-                      <td className="rounded-r-xl bg-black/20 px-3 py-3 text-right">
+        {activeView === "quotes" ? (
+          <div className="grid flex-1 gap-6 lg:grid-cols-[260px_minmax(0,340px)_minmax(0,1fr)]">
+            <aside className="hidden flex-col gap-6 rounded-3xl border border-white/10 bg-slate-900/70 p-5 lg:flex">
+              <div>
+                <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                  Pipeline snapshot
+                </p>
+                <div className="mt-4 grid gap-3">
+                  {quickStats.map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3"
+                    >
+                      <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
+                        {stat.label}
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-100">
+                        {stat.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                  Status filter
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-300">
+                  {["all", "awaiting", ...QUOTE_STATUSES].map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setStatusFilter(status)}
+                      className={`rounded-full border px-3 py-1 transition ${
+                        statusFilter === status
+                          ? "border-sky-400 bg-sky-500 text-slate-950"
+                          : "border-white/15 bg-slate-950/60 hover:border-sky-300/50 hover:text-sky-100"
+                      }`}
+                    >
+                      {status === "awaiting" ? "Needs review" : status}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </aside>
+
+            <section className="flex min-h-[28rem] flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60">
+              <div className="border-b border-white/5 px-5 py-4 sm:px-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-300">
+                      Pipeline
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Showing {filteredQuotes.length} of {quotes.length}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void loadQuotes()}
+                    className="rounded-full border border-white/15 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <div className="mt-4">
+                  <label
+                    htmlFor="quote-search"
+                    className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400"
+                  >
+                    Search
+                  </label>
+                  <div className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-2">
+                    <input
+                      id="quote-search"
+                      type="search"
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder="Search by name, company, email, or ID"
+                      className="flex-1 bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+                    />
+                    {searchTerm ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm("")}
+                        className="text-[0.6rem] uppercase tracking-[0.35em] text-slate-400 transition hover:text-slate-200"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
+                {quotesLoading ? (
+                  <p className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-6 text-sm text-slate-300">
+                    Loading pipeline…
+                  </p>
+                ) : quotesError ? (
+                  <p className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-4 py-6 text-sm text-rose-100">
+                    {quotesError}
+                  </p>
+                ) : filteredQuotes.length === 0 ? (
+                  <p className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-6 text-sm text-slate-300">
+                    No quotes match your filter yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {filteredQuotes.map((quote) => {
+                      const isSelected = quote.id === selectedQuoteId;
+                      const statusLabel = getStatusLabel(quote.status);
+                      return (
+                        <li key={quote.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedQuoteId(quote.id)}
+                            className={`group w-full rounded-2xl border px-4 py-4 text-left transition ${
+                              isSelected
+                                ? "border-sky-400/70 bg-sky-500/10"
+                                : "border-white/10 bg-slate-950/40 hover:border-sky-300/50 hover:bg-sky-500/5"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span
+                                className={`inline-flex items-center rounded-full border px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.35em] ${getStatusBadgeClass(quote.status)}`}
+                              >
+                                {statusLabel}
+                              </span>
+                              <span className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-500">
+                                {formatTimestamp(quote.created_at)}
+                              </span>
+                            </div>
+                            <div className="mt-3 flex items-baseline justify-between gap-3">
+                              <p className="text-sm font-semibold text-slate-100">
+                                {quote.contact_name ??
+                                  quote.company_name ??
+                                  "Untitled request"}
+                              </p>
+                              {quote.company_name ? (
+                                <span className="text-xs text-slate-400">
+                                  {quote.company_name}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {quote.email ??
+                                quote.phone ??
+                                quote.city ??
+                                "No contact details"}
+                            </p>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </section>
+
+            <section className="flex min-h-[28rem] flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60">
+              {selectedQuote ? (
+                <>
+                  <div className="border-b border-white/5 px-5 py-4 sm:px-6">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="space-y-2">
+                        <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-sky-300">
+                          Quote {selectedQuote.id.slice(0, 8)}
+                        </p>
+                        <h2 className="text-xl font-semibold text-slate-100 sm:text-2xl">
+                          {selectedQuote.contact_name ?? "Unnamed request"}
+                        </h2>
+                        <p className="text-xs text-slate-500">
+                          Created {formatTimestamp(selectedQuote.created_at)}
+                        </p>
+                      </div>
+                      <div className="space-y-2 text-right text-xs text-slate-400">
+                        <p>Last update {formatTimestamp(selectedQuote.updated_at)}</p>
+                        <span
+                          className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.35em] ${getStatusBadgeClass(selectedQuote.status)}`}
+                        >
+                          {getStatusLabel(selectedQuote.status)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+                    {detailsError ? (
+                      <p className="mb-4 rounded-2xl border border-rose-500/60 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
+                        {detailsError}
+                      </p>
+                    ) : null}
+                    {detailMessage ? (
+                      <p className="mb-4 rounded-2xl border border-emerald-400/50 bg-emerald-400/10 px-4 py-4 text-sm text-emerald-100">
+                        {detailMessage}
+                      </p>
+                    ) : null}
+                    {detailsLoading ? (
+                      <p className="mb-4 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+                        Syncing latest details…
+                      </p>
+                    ) : null}
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                        <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Contact
+                        </p>
+                        <div className="mt-3 space-y-1 text-sm text-slate-200">
+                          <p className="font-semibold text-slate-100">
+                            {quoteDetails?.profile?.full_name ??
+                              selectedQuote.contact_name ??
+                              "Unknown contact"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {quoteDetails?.profile?.company_name ??
+                              selectedQuote.company_name ??
+                              "—"}
+                          </p>
+                        </div>
+                        <dl className="mt-4 space-y-2 text-xs text-slate-400">
+                          <div className="flex justify-between gap-4">
+                            <dt className="uppercase tracking-[0.3em]">Email</dt>
+                            <dd className="text-right text-slate-200">
+                              {quoteDetails?.profile?.email ??
+                                selectedQuote.email ??
+                                "—"}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <dt className="uppercase tracking-[0.3em]">Phone</dt>
+                            <dd className="text-right text-slate-200">
+                              {quoteDetails?.profile?.phone ??
+                                selectedQuote.phone ??
+                                "—"}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <dt className="uppercase tracking-[0.3em]">User</dt>
+                            <dd className="text-right text-slate-200">
+                              {selectedQuote.user_id ?? "—"}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                        <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Address
+                        </p>
+                        <div className="mt-3 space-y-1 text-sm text-slate-200">
+                          <p>
+                            {quoteDetails?.profile?.address_line1 ??
+                              selectedQuote.address_line1 ??
+                              "—"}
+                          </p>
+                          {(quoteDetails?.profile?.address_line2 ??
+                            selectedQuote.address_line2) && (
+                            <p>
+                              {quoteDetails?.profile?.address_line2 ??
+                                selectedQuote.address_line2}
+                            </p>
+                          )}
+                          <p>
+                            {[quoteDetails?.profile?.city ?? selectedQuote.city, quoteDetails?.profile?.state ?? selectedQuote.state, quoteDetails?.profile?.postal_code ?? selectedQuote.postal_code]
+                              .filter(Boolean)
+                              .join(", ") || "—"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,220px)_1fr]">
+                        <div className="space-y-2">
+                          <label
+                            htmlFor="quote-status"
+                            className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400"
+                          >
+                            Pipeline status
+                          </label>
+                          <select
+                            id="quote-status"
+                            value={statusDraft}
+                            onChange={(event) => setStatusDraft(event.target.value)}
+                            className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/40"
+                          >
+                            <option value="">Select status</option>
+                            {QUOTE_STATUSES.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            htmlFor="team-notes"
+                            className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400"
+                          >
+                            Team notes
+                          </label>
+                          <textarea
+                            id="team-notes"
+                            value={teamNotesDraft}
+                            onChange={(event) => setTeamNotesDraft(event.target.value)}
+                            rows={4}
+                            placeholder="Internal context, next steps, blockers…"
+                            className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/40"
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+                        <span>Changes sync directly to Supabase.</span>
                         <button
                           type="button"
-                          onClick={() => void handlePreviewUpload(upload)}
-                          className="rounded-full border border-white/15 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100 disabled:cursor-not-allowed disabled:border-slate-500/40 disabled:bg-slate-500/20 disabled:text-slate-400"
-                          disabled={uploadPreviewLoading[upload.id]}
+                          onClick={() => void handleSaveQuoteMeta()}
+                          className="rounded-full border border-sky-400/70 bg-sky-500/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-sky-100 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:border-slate-500/40 disabled:bg-slate-500/20 disabled:text-slate-400"
+                          disabled={metaSaving}
                         >
-                          {uploadPreviewLoading[upload.id] ? "Opening…" : "Preview"}
+                          {metaSaving ? "Saving…" : "Save updates"}
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+
+                    {(quoteDetails?.profile?.notes || selectedQuote.customer_notes) && (
+                      <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                        <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Customer notes
+                        </p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm text-slate-200">
+                          {quoteDetails?.profile?.notes ?? selectedQuote.customer_notes}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="mt-6">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Files
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => selectedQuote && void loadQuoteDetails(selectedQuote)}
+                          className="rounded-full border border-white/15 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100"
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                      {detailsLoading ? (
+                        <p className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+                          Loading files…
+                        </p>
+                      ) : quoteDetails?.files?.length ? (
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          {quoteDetails.files.map((file) => (
+                            <div
+                              key={file.linkId}
+                              className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"
+                            >
+                              <p className="font-semibold text-slate-100">
+                                {file.originalName ?? file.path}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatFileSize(file.sizeBytes)}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {formatTimestamp(file.createdAt)}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {file.signedUrl ? (
+                                  <Link
+                                    href={file.signedUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="rounded-full border border-white/15 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100"
+                                  >
+                                    Open
+                                  </Link>
+                                ) : (
+                                  <span className="rounded-full border border-white/10 px-3 py-1 text-[0.6rem] uppercase tracking-[0.35em] text-slate-500">
+                                    No preview
+                                  </span>
+                                )}
+                                {file.userId ? (
+                                  <span className="rounded-full border border-white/10 px-3 py-1 text-[0.6rem] uppercase tracking-[0.35em] text-slate-400">
+                                    {file.userId}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+                          No files linked yet.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-6 space-y-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Create invoice
+                        </h3>
+                      </div>
+                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+                        <label className="space-y-2 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Amount (USD)
+                          <input
+                            type="number"
+                            value={newInvoiceAmount}
+                            onChange={(event) => setNewInvoiceAmount(event.target.value)}
+                            min="0"
+                            step="0.01"
+                            placeholder="1200.00"
+                            className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/40"
+                          />
+                        </label>
+                        <label className="space-y-2 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Due date
+                          <input
+                            type="date"
+                            value={newInvoiceDueDate}
+                            onChange={(event) => setNewInvoiceDueDate(event.target.value)}
+                            className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/40"
+                          />
+                        </label>
+                        <label className="space-y-2 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                          Status
+                          <select
+                            value={newInvoiceStatus}
+                            onChange={(event) => setNewInvoiceStatus(event.target.value)}
+                            className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/40"
+                          >
+                            {INVOICE_STATUSES.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void handleCreateInvoice()}
+                          className="h-fit rounded-full border border-emerald-400/70 bg-emerald-500/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:border-slate-500/40 disabled:bg-slate-500/20 disabled:text-slate-400"
+                          disabled={creatingInvoice}
+                        >
+                          {creatingInvoice ? "Creating…" : "Create"}
+                        </button>
+                      </div>
+                      {quoteDetails?.invoices?.length ? (
+                        <ul className="space-y-3">
+                          {quoteDetails.invoices.map((invoice) => {
+                            const amount = resolveAmount(
+                              invoice.amount_cents ?? invoice.total_cents,
+                              invoice.total,
+                            );
+                            const invoiceUrl = resolveInvoiceUrl(invoice);
+                            return (
+                              <li
+                                key={invoice.id}
+                                className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-sm text-slate-300"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-[0.6rem] uppercase tracking-[0.3em] text-slate-500">
+                                      Invoice {invoice.id.slice(0, 8)}
+                                    </p>
+                                    <p className="text-base font-semibold text-slate-100">
+                                      {formatCurrency(amount)}
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                      Created {formatTimestamp(invoice.created_at)}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.35em] text-slate-300">
+                                    <select
+                                      value={
+                                        invoiceDraftStatuses[invoice.id] ??
+                                        invoice.status ??
+                                        "draft"
+                                      }
+                                      onChange={(event) =>
+                                        setInvoiceDraftStatuses((current) => ({
+                                          ...current,
+                                          [invoice.id]: event.target.value,
+                                        }))
+                                      }
+                                      className="rounded-full border border-white/15 bg-slate-950/70 px-3 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/40"
+                                    >
+                                      {INVOICE_STATUSES.map((status) => (
+                                        <option key={status} value={status}>
+                                          {status}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleUpdateInvoiceStatus(invoice.id)}
+                                      className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-emerald-100 transition hover:bg-emerald-500/20"
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.35em] text-slate-400">
+                                  {invoice.due_date ? (
+                                    <span className="rounded-full border border-white/10 px-3 py-1">
+                                      Due {formatTimestamp(invoice.due_date)}
+                                    </span>
+                                  ) : null}
+                                  {invoice.paid_at ? (
+                                    <span className="rounded-full border border-emerald-400/40 px-3 py-1 text-emerald-100">
+                                      Paid {formatTimestamp(invoice.paid_at)}
+                                    </span>
+                                  ) : null}
+                                  {invoiceUrl ? (
+                                    <Link
+                                      href={invoiceUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="rounded-full border border-white/15 px-3 py-1 text-slate-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/10 hover:text-emerald-100"
+                                    >
+                                      Open link
+                                    </Link>
+                                  ) : null}
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+                          No invoices on this quote yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-slate-400">
+                  <p>Select a quote from the pipeline to view details.</p>
+                  <p className="text-xs text-slate-500">
+                    Use the middle column to choose a request.
+                  </p>
+                </div>
+              )}
+            </section>
+          </div>
+        ) : (
+          <section className="flex min-h-[28rem] flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60">
+            <div className="border-b border-white/5 px-5 py-4 sm:px-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-300">
+                    Uploads
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Client assets synced from the portal
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView("quotes")}
+                    className="rounded-full border border-white/15 px-3 py-1 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100"
+                  >
+                    Pipeline
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadsLoaded(false);
+                      void loadUploads();
+                    }}
+                    className="rounded-full border border-white/15 px-3 py-1 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-        </section>
-      )}
+            <div className="flex-1 overflow-auto px-3 py-4 sm:px-5">
+              {uploadsLoading ? (
+                <p className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-6 text-sm text-slate-300">
+                  Loading uploads…
+                </p>
+              ) : uploadsError ? (
+                <p className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-4 py-6 text-sm text-rose-100">
+                  {uploadsError}
+                </p>
+              ) : uploads.length === 0 ? (
+                <p className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-6 text-sm text-slate-300">
+                  No uploads yet.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] border-separate border-spacing-y-1 text-left text-sm text-slate-200">
+                    <thead className="text-xs uppercase tracking-[0.35em] text-slate-500">
+                      <tr>
+                        <th className="rounded-l-xl bg-slate-950/60 px-3 py-2 font-medium">
+                          File
+                        </th>
+                        <th className="bg-slate-950/60 px-3 py-2 font-medium">
+                          User
+                        </th>
+                        <th className="bg-slate-950/60 px-3 py-2 font-medium">
+                          Size
+                        </th>
+                        <th className="bg-slate-950/60 px-3 py-2 font-medium">
+                          Uploaded
+                        </th>
+                        <th className="rounded-r-xl bg-slate-950/60 px-3 py-2 text-right font-medium">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uploads.map((upload) => (
+                        <tr key={upload.id}>
+                          <td className="rounded-l-xl bg-slate-950/40 px-3 py-3">
+                            <p className="font-semibold text-slate-100">
+                              {upload.original_name ?? upload.path}
+                            </p>
+                            <p className="text-xs text-slate-500">{upload.path}</p>
+                          </td>
+                          <td className="bg-slate-950/40 px-3 py-3 text-xs uppercase tracking-[0.3em] text-slate-400">
+                            {upload.user_id ?? "—"}
+                          </td>
+                          <td className="bg-slate-950/40 px-3 py-3 text-xs uppercase tracking-[0.3em] text-slate-400">
+                            {formatFileSize(upload.size_bytes ?? null)}
+                          </td>
+                          <td className="bg-slate-950/40 px-3 py-3 text-xs uppercase tracking-[0.3em] text-slate-400">
+                            {formatTimestamp(upload.created_at ?? null)}
+                          </td>
+                          <td className="rounded-r-xl bg-slate-950/40 px-3 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => void handlePreviewUpload(upload)}
+                              className="rounded-full border border-white/15 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-sky-300/60 hover:bg-sky-300/10 hover:text-sky-100 disabled:cursor-not-allowed disabled:border-slate-500/40 disabled:bg-slate-500/20 disabled:text-slate-400"
+                              disabled={Boolean(uploadPreviewLoading[upload.id])}
+                            >
+                              {uploadPreviewLoading[upload.id] ? "Opening…" : "Preview"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+      </main>
     </div>
   );
 }
