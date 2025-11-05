@@ -7,6 +7,9 @@ export const metadata: Metadata = {
     "Upload reference photos, request project quotes, and review invoices for your deckd interior makeovers.",
 };
 
+// Force dynamic rendering since this page uses authentication context
+export const dynamic = 'force-dynamic';
+
 export default function CustomerPortalPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">

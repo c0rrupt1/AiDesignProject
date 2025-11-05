@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "CRM Dashboard | deckd studio",
   description:
     "Internal deckd workspace for reviewing customer quotes, managing uploads, and issuing invoices.",
 };
+
+// Force dynamic rendering to avoid build-time errors with iframe
+export const dynamic = 'force-dynamic';
 
 export default function CrmDashboardPage() {
   // Redirect to the Vite CRM application
