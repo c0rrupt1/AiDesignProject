@@ -39,9 +39,18 @@ export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (isCrmHost(host)) {
+    if (isAssetPath(pathname) || pathname.startsWith("/api")) {
+      return NextResponse.next();
+    }
     if (pathname === "/") {
       const url = request.nextUrl.clone();
       url.pathname = "/crm";
+      return NextResponse.redirect(url);
+    }
+    if (!pathname.startsWith("/crm")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/crm";
+      url.search = "";
       return NextResponse.redirect(url);
     }
     return NextResponse.next();
