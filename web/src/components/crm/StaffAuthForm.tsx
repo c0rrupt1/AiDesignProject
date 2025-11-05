@@ -5,6 +5,9 @@ import { useSupabaseAuth } from "@/components/customer/SupabaseAuthProvider";
 
 type AuthMode = "magic" | "signin" | "signup";
 
+const MAIN_SITE_URL =
+  process.env.NEXT_PUBLIC_MAIN_SITE_URL?.trim() || "https://deckd.us";
+
 export function StaffAuthForm() {
   const { supabase } = useSupabaseAuth();
   const [authMode, setAuthMode] = useState<AuthMode>("signin");
@@ -119,6 +122,12 @@ export function StaffAuthForm() {
           and invoices. Invite-only — mark new profiles as staff inside Supabase
           before they can sign in here.
         </p>
+        <a
+          href={MAIN_SITE_URL}
+          className="inline-flex items-center justify-center rounded-full border border-white/15 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-200 transition hover:border-amber-300/60 hover:bg-amber-300/10 hover:text-amber-100"
+        >
+          Go to main site →
+        </a>
       </div>
 
       <div className="flex flex-wrap gap-2 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-slate-300">
