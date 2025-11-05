@@ -61,18 +61,24 @@ export default function RootLayout({
                   >
                     Shopping
                   </Link>
-                <Link
-                  href="/request"
-                  className="rounded-full border border-transparent px-4 py-2 transition hover:border-white/20 hover:bg-white/10 hover:text-slate-100"
-                >
-                  Requests
-                </Link>
-                <Link
-                  href="/lookup"
-                  className="rounded-full border border-transparent px-4 py-2 transition hover:border-white/20 hover:bg-white/10 hover:text-slate-100"
-                >
-                  Lookup
-                </Link>
+                  <Link
+                    href="/request"
+                    className="rounded-full border border-transparent px-4 py-2 transition hover:border-white/20 hover:bg-white/10 hover:text-slate-100"
+                  >
+                    Requests
+                  </Link>
+                  <Link
+                    href="/lookup"
+                    className="rounded-full border border-transparent px-4 py-2 transition hover:border-white/20 hover:bg-white/10 hover:text-slate-100"
+                  >
+                    Lookup
+                  </Link>
+                  <Link
+                    href="/customer"
+                    className="rounded-full border border-transparent px-4 py-2 transition hover:border-white/20 hover:bg-white/10 hover:text-slate-100"
+                  >
+                    Customer
+                  </Link>
               </nav>
             </div>
           </header>
@@ -83,12 +89,12 @@ export default function RootLayout({
                 Interior Makeover Studio
               </p>
               <div className="flex flex-wrap gap-3">
-                  <Link
-                    href="/workspace"
-                    className="rounded-full border border-white/10 px-3 py-1 text-[0.7rem] text-slate-200 transition hover:bg-white/10"
-                  >
-                    Launch workspace
-                  </Link>
+                <Link
+                  href="/workspace"
+                  className="rounded-full border border-white/10 px-3 py-1 text-[0.7rem] text-slate-200 transition hover:bg-white/10"
+                >
+                  Launch workspace
+                </Link>
                 <Link
                   href="/request"
                   className="rounded-full border border-white/10 px-3 py-1 text-[0.7rem] text-slate-200 transition hover:bg-white/10"
@@ -100,6 +106,12 @@ export default function RootLayout({
                   className="rounded-full border border-white/10 px-3 py-1 text-[0.7rem] text-slate-200 transition hover:bg-white/10"
                 >
                   Lookup code
+                </Link>
+                <Link
+                  href="/customer"
+                  className="rounded-full border border-white/10 px-3 py-1 text-[0.7rem] text-slate-200 transition hover:bg-white/10"
+                >
+                  Customer portal
                 </Link>
               </div>
             </div>
