@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { SupabaseAuthProvider } from "@/components/customer/SupabaseAuthProvider";
-import { StaffDashboard } from "@/components/crm/StaffDashboard";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "CRM Dashboard | deckd studio",
@@ -9,15 +8,22 @@ export const metadata: Metadata = {
 };
 
 export default function CrmDashboardPage() {
+  // Redirect to the Vite CRM application
+  // In development: http://localhost:5174
+  // In production: Configure your deployment to serve the built CRM
+  const crmUrl = process.env.NEXT_PUBLIC_CRM_APP_URL || 'http://localhost:5174';
+
+  // For now, we'll render an iframe that embeds the CRM
+  // You can also use a full redirect: redirect(crmUrl);
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
-      <div className="pointer-events-none absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.12),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(125,211,252,0.12),_transparent_60%)]" />
-      <div className="pointer-events-none absolute -top-56 left-1/2 -z-10 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-sky-400/25 blur-[180px]" />
-      <main className="mx-auto max-w-6xl px-6 pb-24 pt-16 md:px-10">
-        <SupabaseAuthProvider>
-          <StaffDashboard />
-        </SupabaseAuthProvider>
-      </main>
+    <div className="fixed inset-0 w-full h-full">
+      <iframe
+        src={crmUrl}
+        className="w-full h-full border-0"
+        title="deckd CRM"
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+      />
     </div>
   );
 }
