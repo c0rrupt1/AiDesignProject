@@ -1,0 +1,19 @@
+{
+  "name": "ai-design-workspace",
+  "private": true,
+  "workspaces": [
+    "web",
+    "crm"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace web",
+    "build": "npm run build --workspace web",
+    "lint": "npm run lint --workspace web",
+    "dev:web": "npm run dev --workspace web",
+    "build:web": "npm run build --workspace web",
+    "lint:web": "npm run lint --workspace web",
+    "dev:crm": "npm run dev --workspace crm",
+    "build:crm": "npm run build --workspace crm",
+    "lint:crm": "npm run lint --workspace crm"
+  }
+}

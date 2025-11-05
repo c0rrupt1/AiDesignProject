@@ -10,24 +10,43 @@ Need quick sourcing help? A dedicated shopping tab lets you crop the photo and a
 
 ### Repository layout
 
-- `web/` – Next.js 15 (App Router + Tailwind) frontend and API route for image editing.
+- `web/` – Next.js 15 (App Router + Tailwind) frontend and API routes for the public site.
+- `crm/` – Vite + React skeleton for the next-generation CRM (currently minimal on purpose).
+- `package/` – Reverse image search CLI + library.
 - `.gitignore` – Base ignore list for Node, Python, and common tooling.
 
 ### Quick start
 
 ```bash
-# install dependencies
-cd web
+# install both workspaces
 npm install
 
-# run the dev server
-npm run dev
+# run the public site
+npm run dev:web
+
+# run the CRM preview (new Vite app)
+npm run dev:crm
 ```
 
-Visit `http://localhost:3000` to try the UI.
+Visit `http://localhost:3000` for the public site and `http://localhost:5174` for the barebones CRM preview.
 
 When a photo is loaded you can paint a mask directly in the browser. White
 strokes mark surfaces to redesign, while black areas stay untouched.
+
+### CRM status
+
+The `crm/` app is an empty canvas meant to replace the legacy CRM embedded in the Next.js project. It currently ships a simple landing screen and lightweight scaffolding:
+
+- React + TypeScript via Vite.
+- Scripts wired into the root `package.json` so you can build/deploy independently of `web/`.
+- Placeholder copy outlining the migration checklist.
+
+Next steps for the CRM:
+
+1. Set `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` in `crm/.env`.
+2. Port shared Supabase + auth helpers into a reusable package (or import them directly for now).
+3. Rebuild dashboard modules inside `crm/src/` without touching the public site.
+4. Point a dedicated Vercel project at the `crm/` directory and wire the `crm.deckd.us` domain.
 
 ### Configuration
 
