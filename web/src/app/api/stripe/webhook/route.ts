@@ -88,12 +88,26 @@ export async function POST(req: NextRequest) {
 async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
   console.log("PaymentIntent succeeded:", paymentIntent.id);
 
+  let receiptUrl: string | null = null;
+  const latestChargeId = paymentIntent.latest_charge;
+  if (typeof latestChargeId === "string") {
+    try {
+      const charge = await stripe.charges.retrieve(latestChargeId);
+      receiptUrl = charge.receipt_url ?? null;
+    } catch (chargeError) {
+      console.warn(
+        `Unable to retrieve charge ${latestChargeId} for receipt URL:`,
+        chargeError,
+      );
+    }
+  }
+
   const { data: payment, error } = await supabaseAdmin
     .from("payments")
     .update({
       status: "succeeded",
       completed_at: new Date().toISOString(),
-      receipt_url: paymentIntent.charges.data[0]?.receipt_url ?? null,
+      receipt_url: receiptUrl,
     })
     .eq("stripe_payment_intent_id", paymentIntent.id)
     .select()
