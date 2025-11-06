@@ -566,25 +566,6 @@ function CustomerPortalContent() {
     }
 
     try {
-      const { error: profileUpdateError } = await supabase
-        .from(PROFILES_TABLE)
-        .update({
-          full_name: trimmed.fullName || null,
-          company_name: null,
-          phone: trimmed.phone || null,
-          address_line1: trimmed.addressLine1 || null,
-          address_line2: trimmed.addressLine2 || null,
-          city: trimmed.city || null,
-          state: trimmed.state || null,
-          postal_code: trimmed.postalCode || null,
-          notes: trimmed.notes || null,
-        })
-        .eq("user_id", user.id);
-
-      if (profileUpdateError) {
-        throw profileUpdateError;
-      }
-
       const {
         data: insertedQuote,
         error: quoteInsertError,

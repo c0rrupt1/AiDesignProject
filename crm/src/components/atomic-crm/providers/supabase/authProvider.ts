@@ -118,7 +118,7 @@ const ensureActiveSale = async (): Promise<{ reason: InactiveReason | null }> =>
     return { reason: "disabled" };
   }
 
-  if (sale.is_staff === false) {
+  if (sale.is_staff === false && !sale.administrator) {
     await supabase.auth.signOut();
     cachedSale = undefined;
     return { reason: "not_staff" };
@@ -215,7 +215,13 @@ export const authProvider: AuthProvider = {
 
     // Get the current user
     const sale = await getSaleFromCache();
-    if (sale == null || sale.disabled || sale.is_staff === false) return false;
+    if (
+      sale == null ||
+      sale.disabled ||
+      (sale.is_staff === false && !sale.administrator)
+    ) {
+      return false;
+    }
 
     // Compute access rights from the sale role
     const role = sale.administrator ? "admin" : "user";
