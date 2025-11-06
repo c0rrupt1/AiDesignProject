@@ -96,10 +96,12 @@ export async function POST(
         client_secret: paymentIntent.client_secret,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error processing payment:", error);
+    const message =
+      error instanceof Error ? error.message : "Payment processing failed";
     return NextResponse.json(
-      { error: error.message || "Payment processing failed" },
+      { error: message },
       { status: 500 }
     );
   }

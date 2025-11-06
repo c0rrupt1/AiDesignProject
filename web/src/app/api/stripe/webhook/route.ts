@@ -74,10 +74,12 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error processing webhook:", error);
     return NextResponse.json(
-      { error: "Webhook handler failed" },
+      {
+        error: error instanceof Error ? error.message : "Webhook handler failed",
+      },
       { status: 500 }
     );
   }
@@ -91,7 +93,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
     .update({
       status: "succeeded",
       completed_at: new Date().toISOString(),
-      receipt_url: (paymentIntent.charges.data[0] as any)?.receipt_url || null,
+      receipt_url: paymentIntent.charges.data[0]?.receipt_url ?? null,
     })
     .eq("stripe_payment_intent_id", paymentIntent.id)
     .select()
@@ -143,14 +145,18 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
 async function handleChargeSucceeded(charge: Stripe.Charge) {
   console.log("Charge succeeded:", charge.id);
 
+  const paymentMethodDetails = charge.payment_method_details;
+  const cardDetails =
+    paymentMethodDetails?.type === "card" ? paymentMethodDetails.card ?? null : null;
+
   await supabaseAdmin
     .from("payments")
     .update({
       stripe_charge_id: charge.id,
       payment_method_type: charge.payment_method_details?.type || null,
-      payment_method_last4: (charge.payment_method_details as any)?.card?.last4 || null,
-      payment_method_brand: (charge.payment_method_details as any)?.card?.brand || null,
-      receipt_url: charge.receipt_url || null,
+      payment_method_last4: cardDetails?.last4 ?? null,
+      payment_method_brand: cardDetails?.brand ?? null,
+      receipt_url: charge.receipt_url ?? null,
     })
     .eq("stripe_payment_intent_id", charge.payment_intent as string);
 }

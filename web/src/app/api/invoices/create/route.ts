@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseAdmin = createClient(
@@ -7,13 +6,32 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+type InvoiceItemInput = {
+  description: string;
+  quantity?: number | null;
+  unit_price: number;
+  item_type?: string | null;
+};
+
+type InvoiceCreatePayload = {
+  customer_id: string;
+  project_code?: string | null;
+  items: InvoiceItemInput[];
+  tax_amount?: number;
+  discount_amount?: number;
+  due_date?: string | null;
+  description?: string | null;
+  notes?: string | null;
+  terms?: string | null;
+};
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = (await req.json()) as Partial<InvoiceCreatePayload>;
     const {
       customer_id,
       project_code,
-      items,
+      items: rawItems,
       tax_amount = 0,
       discount_amount = 0,
       due_date,
@@ -21,9 +39,12 @@ export async function POST(req: NextRequest) {
       notes,
       terms,
     } = body;
+    const items: InvoiceItemInput[] = Array.isArray(rawItems)
+      ? (rawItems as InvoiceItemInput[])
+      : [];
 
     // Validate required fields
-    if (!customer_id || !items || items.length === 0) {
+    if (!customer_id || items.length === 0) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -61,7 +82,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create line items
-    const lineItems = items.map((item: any, index: number) => ({
+    const lineItems = items.map((item, index) => ({
       invoice_id: invoice.id,
       description: item.description,
       quantity: item.quantity || 1,
@@ -96,10 +117,13 @@ export async function POST(req: NextRequest) {
       success: true,
       invoice: updatedInvoice,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error in create invoice API:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      {
+        error:
+          error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 }
     );
   }
