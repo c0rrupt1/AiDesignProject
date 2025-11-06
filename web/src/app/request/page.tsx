@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
 import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
 import {
+  GeneratedImagesProvider,
   useGeneratedImages,
   type GeneratedImage,
 } from "@/components/providers/GeneratedImagesProvider";
@@ -54,6 +55,14 @@ const extractFileName = (value: string | null | undefined): string | null => {
 };
 
 export default function RequestQuotePage() {
+  return (
+    <GeneratedImagesProvider>
+      <RequestQuotePageInner />
+    </GeneratedImagesProvider>
+  );
+}
+
+function RequestQuotePageInner() {
   const { projectCode, sessionId, results } = useGeneratedImages();
   const [message, setMessage] = useState<SubmissionMessage>(initialMessage);
   const [selectedMakeoverId, setSelectedMakeoverId] = useState<number | null>(

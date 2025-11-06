@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe/server";
 import { createClient } from "@supabase/supabase-js";
+import { stripe, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe/server";
 import Stripe from "stripe";
 
 // Initialize Supabase admin client for webhook handling
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl) {
+  throw new Error("Missing Supabase URL. Set NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL.");
+}
+
+if (!supabaseServiceKey) {
+  throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY environment variable.");
+}
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(req: NextRequest) {
   const body = await req.text();

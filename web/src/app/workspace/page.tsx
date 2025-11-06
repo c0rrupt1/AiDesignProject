@@ -11,18 +11,18 @@ import {
   useState,
 } from "react";
 
-import { fetchJson, HttpError } from "@/lib/http";
-import { promptTemplates } from "@/components/workspace/promptTemplates";
+import { GeneratedImagesProvider, useGeneratedImages } from "@/components/providers/GeneratedImagesProvider";
+import type { GeneratedImage } from "@/components/providers/GeneratedImagesProvider";
+import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
 import { HeroSection } from "@/components/workspace/HeroSection";
+import { promptTemplates } from "@/components/workspace/promptTemplates";
 import {
   clamp01,
   cropImageToDataUrl,
   dataUrlToFile,
   fileToDataUrl,
 } from "@/components/workspace/utils";
-import { useGeneratedImages } from "@/components/providers/GeneratedImagesProvider";
-import type { GeneratedImage } from "@/components/providers/GeneratedImagesProvider";
-import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
+import { fetchJson, HttpError } from "@/lib/http";
 
 
 type KeywordTarget = "original" | number;
@@ -78,6 +78,14 @@ type EditResponse = {
 };
 
 export default function WorkspacePage() {
+  return (
+    <GeneratedImagesProvider>
+      <WorkspacePageInner />
+    </GeneratedImagesProvider>
+  );
+}
+
+function WorkspacePageInner() {
   const {
     results,
     setResults,

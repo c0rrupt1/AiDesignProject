@@ -2,9 +2,12 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
-import { useGeneratedImages } from "@/components/providers/GeneratedImagesProvider";
-import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
+import {
+  GeneratedImagesProvider,
+  useGeneratedImages,
+} from "@/components/providers/GeneratedImagesProvider";
 import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
+import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
 
 type LookupResult =
   | {
@@ -46,6 +49,14 @@ type ProjectDetails = {
 };
 
 export default function LookupPage() {
+  return (
+    <GeneratedImagesProvider>
+      <LookupPageInner />
+    </GeneratedImagesProvider>
+  );
+}
+
+function LookupPageInner() {
   const { projectCode } = useGeneratedImages();
   const [codeInput, setCodeInput] = useState(projectCode);
   const normalizedCode = useMemo(() => codeInput.trim(), [codeInput]);

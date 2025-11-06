@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe/server";
 import { createClient } from "@supabase/supabase-js";
+import { stripe } from "@/lib/stripe/server";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl) {
+  throw new Error("Missing Supabase URL. Set NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL.");
+}
+
+if (!supabaseServiceKey) {
+  throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY environment variable.");
+}
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(
   req: NextRequest,

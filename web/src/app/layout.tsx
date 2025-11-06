@@ -3,7 +3,6 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { GeneratedImagesProvider } from "@/components/providers/GeneratedImagesProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,6 +19,8 @@ export const metadata: Metadata = {
   description:
     "Stage AI-powered interior makeovers, mask edits, and shoppable keyword searches in one streamlined workspace.",
 };
+
+export const dynamic = "force-dynamic";
 
 const crmHostCandidates = [
   process.env.CRM_HOSTNAME,
@@ -62,9 +63,8 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-slate-950 text-slate-100`}
       >
-        <GeneratedImagesProvider>
-          <div className="flex min-h-screen flex-col">
-            <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur-lg">
+        <div className="flex min-h-screen flex-col">
+          <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur-lg">
               <div className="mx-auto flex max-w-5xl items-center justify-between gap-6 px-6 py-5 md:px-10">
                 {isCrm ? (
                   <Link href="/crm" className="flex items-center gap-3 text-slate-100">
@@ -143,7 +143,7 @@ export default async function RootLayout({
               </div>
             </header>
             <main className="flex-1">{children}</main>
-            <footer className="border-t border-white/10 bg-slate-950/80">
+          <footer className="border-t border-white/10 bg-slate-950/80">
               <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 py-6 text-xs text-slate-400 md:flex-row md:items-center md:justify-between md:px-10">
                 <p className="uppercase tracking-[0.35em] text-slate-500">
                   {isCrm ? "Deckd studio operations" : "Interior Makeover Studio"}
@@ -192,9 +192,8 @@ export default async function RootLayout({
                   </div>
                 )}
               </div>
-            </footer>
-          </div>
-        </GeneratedImagesProvider>
+          </footer>
+        </div>
       </body>
     </html>
   );
