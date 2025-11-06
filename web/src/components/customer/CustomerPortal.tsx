@@ -56,7 +56,6 @@ type InvoiceRecord = DatabaseRow & {
 
 type QuoteFormValues = {
   fullName: string;
-  companyName: string;
   phone: string;
   addressLine1: string;
   addressLine2: string;
@@ -211,7 +210,6 @@ function CustomerPortalContent() {
 
   const [quoteForm, setQuoteForm] = useState<QuoteFormValues>({
     fullName: "",
-    companyName: "",
     phone: "",
     addressLine1: "",
     addressLine2: "",
@@ -240,7 +238,6 @@ function CustomerPortalContent() {
       setQuoteForm((current) => ({
         ...current,
         fullName: "",
-        companyName: "",
         phone: "",
         addressLine1: "",
         addressLine2: "",
@@ -253,8 +250,6 @@ function CustomerPortalContent() {
     setQuoteForm((current) => ({
       ...current,
       fullName: typeof profile.full_name === "string" ? profile.full_name : "",
-      companyName:
-        typeof profile.company_name === "string" ? profile.company_name : "",
       phone: typeof profile.phone === "string" ? profile.phone : "",
       addressLine1:
         typeof profile.address_line1 === "string" ? profile.address_line1 : "",
@@ -555,7 +550,6 @@ function CustomerPortalContent() {
 
     const trimmed: QuoteFormValues = {
       fullName: quoteForm.fullName.trim(),
-      companyName: quoteForm.companyName.trim(),
       phone: quoteForm.phone.trim(),
       addressLine1: quoteForm.addressLine1.trim(),
       addressLine2: quoteForm.addressLine2.trim(),
@@ -576,7 +570,7 @@ function CustomerPortalContent() {
         .from(PROFILES_TABLE)
         .update({
           full_name: trimmed.fullName || null,
-          company_name: trimmed.companyName || null,
+          company_name: null,
           phone: trimmed.phone || null,
           address_line1: trimmed.addressLine1 || null,
           address_line2: trimmed.addressLine2 || null,
@@ -599,7 +593,7 @@ function CustomerPortalContent() {
         .insert({
           user_id: user.id,
           contact_name: trimmed.fullName || null,
-          company_name: trimmed.companyName || null,
+          company_name: null,
           phone: trimmed.phone || null,
           address_line1: trimmed.addressLine1 || null,
           address_line2: trimmed.addressLine2 || null,
@@ -867,7 +861,7 @@ function CustomerPortalContent() {
           Contact and project details
         </h3>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-4">
           <div>
             <label
               htmlFor="quote-full-name"
@@ -887,27 +881,6 @@ function CustomerPortalContent() {
               required
               className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none ring-amber-500 transition focus:ring-2"
               placeholder="Alex Doe"
-              disabled={quoteSubmitting || profileLoading}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="quote-company-name"
-              className="text-[0.65rem] font-semibold uppercase tracking-[0.4em] text-slate-400"
-            >
-              Company
-            </label>
-            <input
-              id="quote-company-name"
-              value={quoteForm.companyName}
-              onChange={(event) =>
-                setQuoteForm((current) => ({
-                  ...current,
-                  companyName: event.target.value,
-                }))
-              }
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none ring-amber-500 transition focus:ring-2"
-              placeholder="Deckd Interiors"
               disabled={quoteSubmitting || profileLoading}
             />
           </div>

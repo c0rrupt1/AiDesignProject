@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
+import { GeneratedImagesProvider } from "@/components/providers/GeneratedImagesProvider";
 import { ProjectCodePanel } from "@/components/project/ProjectCodePanel";
+import { RecentMakeoversStrip } from "@/components/workspace/RecentMakeoversStrip";
 
 type Feature = {
   name: string;
@@ -54,6 +55,14 @@ const features: Feature[] = [
 ];
 
 export default function LandingPage() {
+  return (
+    <GeneratedImagesProvider>
+      <LandingPageInner />
+    </GeneratedImagesProvider>
+  );
+}
+
+function LandingPageInner() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.12),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(56,189,248,0.1),_transparent_60%)]" />
